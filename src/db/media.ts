@@ -51,6 +51,8 @@ export interface MediaJobRow {
   prompt: string | null;
   cost_cents: number;
   result_url: string | null;
+  cached_path?: string | null;
+  cached_url?: string | null;
   cover_image_url: string | null;
   error_message: string | null;
   created_at?: string;

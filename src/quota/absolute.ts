@@ -84,9 +84,22 @@ export class AbsoluteQuotaAdapter implements QuotaAdapter {
     model: string,
     inputTokens: number,
     outputTokens: number,
-    endpoint: string
+    endpoint: string,
+    idempotencyKey?: string
   ): Promise<void> {
     const db = getDb();
+
+    if (idempotencyKey) {
+      const existing = await db
+        .selectFrom("usage_log")
+        .select("id")
+        .where("idempotency_key", "=", idempotencyKey)
+        .executeTakeFirst();
+
+      if (existing) {
+        return;
+      }
+    }
 
     await db
       .insertInto("usage_log")
@@ -98,6 +111,7 @@ export class AbsoluteQuotaAdapter implements QuotaAdapter {
         output_tokens: outputTokens,
         cost_cents: costCents,
         endpoint,
+        idempotency_key: idempotencyKey ?? null,
         created_at: new Date().toISOString(),
       })
       .execute();

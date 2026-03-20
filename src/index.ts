@@ -4,6 +4,7 @@ import { createProxyRoutes } from "./proxy";
 import { AbsoluteQuotaAdapter } from "./quota";
 import { ensurePricing } from "./pricing";
 import { seedDefaultModelLimits } from "./model-limits/defaults";
+import { getMediaFilePath } from "./media/storage";
 
 const REQUIRED_ENV = [
   "DISCORD_TOKEN",
@@ -59,6 +60,16 @@ async function main() {
       },
     },
     fetch(req) {
+      const mediaPath = getMediaFilePath(new URL(req.url).pathname);
+      if (mediaPath) {
+        const file = Bun.file(mediaPath);
+        return new Response(file, {
+          headers: {
+            "Cache-Control": "public, max-age=31536000, immutable",
+          },
+        });
+      }
+
       return Response.json(
         { error: { message: "Not found", type: "error", code: 404 } },
         { status: 404 }

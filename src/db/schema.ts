@@ -66,6 +66,7 @@ export interface UsageLogTable {
   output_tokens: number;
   cost_cents: number; // calculated cost in cents
   endpoint: string; // 'completions' | 'responses'
+  idempotency_key: string | null;
   created_at: Generated<string>;
 }
 
@@ -106,6 +107,8 @@ export interface MediaJobsTable {
   prompt: string | null;
   cost_cents: number;
   result_url: string | null;
+  cached_path: string | null;
+  cached_url: string | null;
   cover_image_url: string | null;
   error_message: string | null;
   created_at: Generated<string>;

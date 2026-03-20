@@ -23,7 +23,8 @@ export interface QuotaAdapter {
     model: string,
     inputTokens: number,
     outputTokens: number,
-    endpoint: string
+    endpoint: string,
+    idempotencyKey?: string
   ): Promise<void>;
 
   // Get usage stats for a user

@@ -3,6 +3,7 @@ import { createMediaJob, getMediaJobByTaskId, listPendingMediaJobs, updateMediaJ
 import { getOrCreateSystemKey } from "../keys";
 import { calculateCostCents } from "../pricing";
 import type { QuotaAdapter } from "../quota";
+import { cacheRemoteMedia } from "./storage";
 
 const ZAI_BASE = (process.env.UPSTREAM_URL || "https://api.z.ai/api").replace(/\/$/, "");
 const ZAI_PREFIX = process.env.UPSTREAM_PREFIX ?? "/paas/v4";
@@ -533,6 +534,15 @@ export async function getFreshVideoAsset(taskId: string): Promise<{
   coverImageUrl?: string;
   error?: string;
 }> {
+  const existing = await getMediaJobByTaskId(taskId);
+  if (existing?.cached_url) {
+    return {
+      status: "ready",
+      url: existing.cached_url,
+      coverImageUrl: existing.cover_image_url ?? undefined,
+    };
+  }
+
   const status = await checkVideoJobStatus(taskId);
   if (!status.done) {
     return { status: "processing" };
@@ -578,7 +588,8 @@ export async function deliverPendingVideoJobs(
         continue;
       }
 
-      if (!job.billed) {
+      let billed = job.billed;
+      if (!billed) {
         await quota.record(
           job.system_key_id,
           job.user_id,
@@ -586,9 +597,20 @@ export async function deliverPendingVideoJobs(
           job.model,
           0,
           0,
-          "video.generate"
+          "video.generate",
+          `media-job:${job.task_id}`
         );
+        await updateMediaJob(job.task_id, {
+          billed: 1,
+        });
+        billed = 1;
       }
+
+      const cached = await cacheRemoteMedia(
+        status.url,
+        `videos/${job.guild_id}`,
+        `${job.task_id}.mp4`
+      );
 
       await publish({
         taskId: job.task_id,
@@ -597,14 +619,16 @@ export async function deliverPendingVideoJobs(
         model: job.model,
         prompt: job.prompt,
         costCents: job.cost_cents,
-        resultUrl: status.url,
+        resultUrl: cached.publicUrl,
         coverImageUrl: status.coverImageUrl ?? null,
       });
 
       await updateMediaJob(job.task_id, {
         status: "completed",
-        billed: 1,
+        billed,
         result_url: status.url,
+        cached_path: cached.filePath,
+        cached_url: cached.publicUrl,
         cover_image_url: status.coverImageUrl ?? null,
         error_message: null,
       });

@@ -185,10 +185,22 @@ export async function migrate() {
     .addColumn("output_tokens", "integer", (col) => col.notNull())
     .addColumn("cost_cents", "integer", (col) => col.notNull())
     .addColumn("endpoint", "text", (col) => col.notNull())
+    .addColumn("idempotency_key", "text")
     .addColumn("created_at", "text", (col) =>
       col.notNull().defaultTo(CURRENT_TIMESTAMP)
     )
     .execute();
+
+  try {
+    await db.schema
+      .alterTable("usage_log")
+      .addColumn("idempotency_key", "text")
+      .execute();
+  } catch (err) {
+    if (!String(err).includes("duplicate column name")) {
+      throw err;
+    }
+  }
 
   await db.schema
     .createTable("model_limits")
@@ -231,6 +243,13 @@ export async function migrate() {
     .ifNotExists()
     .on("usage_log")
     .column("user_id")
+    .execute();
+
+  await db.schema
+    .createIndex("idx_usage_log_idempotency")
+    .ifNotExists()
+    .on("usage_log")
+    .column("idempotency_key")
     .execute();
 
   await db.schema
@@ -286,6 +305,8 @@ export async function migrate() {
     .addColumn("prompt", "text")
     .addColumn("cost_cents", "integer", (col) => col.notNull())
     .addColumn("result_url", "text")
+    .addColumn("cached_path", "text")
+    .addColumn("cached_url", "text")
     .addColumn("cover_image_url", "text")
     .addColumn("error_message", "text")
     .addColumn("created_at", "text", (col) =>
@@ -295,4 +316,26 @@ export async function migrate() {
       col.notNull().defaultTo(CURRENT_TIMESTAMP)
     )
     .execute();
+
+  try {
+    await db.schema
+      .alterTable("media_jobs")
+      .addColumn("cached_path", "text")
+      .execute();
+  } catch (err) {
+    if (!String(err).includes("duplicate column name")) {
+      throw err;
+    }
+  }
+
+  try {
+    await db.schema
+      .alterTable("media_jobs")
+      .addColumn("cached_url", "text")
+      .execute();
+  } catch (err) {
+    if (!String(err).includes("duplicate column name")) {
+      throw err;
+    }
+  }
 }

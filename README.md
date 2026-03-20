@@ -87,6 +87,7 @@ User commands:
 - `/generate ocr` extracts text from an image or PDF with GLM-OCR and charges the result against the user's Routussy budget
 - `/generate transcribe` transcribes a WAV or MP3 clip with GLM-ASR-2512 and charges the result against the user's Routussy budget
 - Generated image/video/OCR/transcription results include a persistent `Share Publicly` button for the original requester, backed by SQLite so it survives bot restarts
+- Finished videos are cached locally and served from your own deployment under `/media/...` so users are not stuck with fragile upstream signed URLs
 
 Model concurrency limits:
 
