@@ -12,6 +12,8 @@ export interface Database {
 export interface GuildsTable {
   id: string; // discord guild id
   default_budget_cents: number; // default budget for new users in cents
+  global_budget_cents: number | null; // optional server-wide spend cap in cents
+  spent_cents: number; // total spent by the guild in cents
   created_at: Generated<string>;
 }
 

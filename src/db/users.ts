@@ -11,6 +11,7 @@ export async function ensureGuild(
     .values({
       id: guildId,
       default_budget_cents: defaultBudgetCents,
+      spent_cents: 0,
     })
     .onConflict((oc) => oc.column("id").doNothing())
     .execute();
@@ -35,6 +36,30 @@ export async function setGuildDefaultBudget(
     .set({ default_budget_cents: cents })
     .where("id", "=", guildId)
     .execute();
+}
+
+export async function setGuildGlobalBudget(
+  guildId: string,
+  cents: number | null
+): Promise<void> {
+  const db = getDb();
+  await db
+    .updateTable("guilds")
+    .set({ global_budget_cents: cents })
+    .where("id", "=", guildId)
+    .execute();
+}
+
+export async function getGuildBudgetUsage(guildId: string) {
+  const guild = await getGuild(guildId);
+  const spentCents = guild?.spent_cents ?? 0;
+  const budgetCents = guild?.global_budget_cents ?? null;
+  return {
+    budgetCents,
+    spentCents,
+    remainingCents:
+      budgetCents === null ? null : Math.max(0, budgetCents - spentCents),
+  };
 }
 
 export async function ensureUser(

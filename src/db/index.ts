@@ -29,10 +29,43 @@ export async function migrate() {
     .addColumn("default_budget_cents", "integer", (col) =>
       col.notNull().defaultTo(0)
     )
+    .addColumn("global_budget_cents", "integer")
+    .addColumn("spent_cents", "integer", (col) => col.notNull().defaultTo(0))
     .addColumn("created_at", "text", (col) =>
       col.notNull().defaultTo(CURRENT_TIMESTAMP)
     )
     .execute();
+
+  try {
+    await db.schema
+      .alterTable("guilds")
+      .addColumn("global_budget_cents", "integer")
+      .execute();
+  } catch (err) {
+    if (!String(err).includes("duplicate column name")) {
+      throw err;
+    }
+  }
+
+  try {
+    await db.schema
+      .alterTable("guilds")
+      .addColumn("spent_cents", "integer", (col) => col.notNull().defaultTo(0))
+      .execute();
+  } catch (err) {
+    if (!String(err).includes("duplicate column name")) {
+      throw err;
+    }
+  }
+
+  await sql`
+    UPDATE guilds
+    SET spent_cents = COALESCE((
+      SELECT SUM(users.spent_cents)
+      FROM users
+      WHERE users.guild_id = guilds.id
+    ), 0)
+  `.execute(db);
 
   await db.schema
     .createTable("users")

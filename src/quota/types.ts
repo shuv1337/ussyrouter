@@ -31,4 +31,7 @@ export interface QuotaAdapter {
 
   // Get usage stats for a key
   getKeyUsage(keyId: number): Promise<QuotaUsage>;
+
+  // Get usage stats for a guild/server budget
+  getGuildUsage(guildId: string): Promise<QuotaUsage>;
 }

@@ -213,6 +213,19 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const totalSpent = Number(userStats?.total_spent ?? 0);
   const totalInput = Number(usageStats?.input_tokens ?? 0);
   const totalOutput = Number(usageStats?.output_tokens ?? 0);
+  const guild = await db
+    .selectFrom("guilds")
+    .select(["global_budget_cents", "spent_cents"])
+    .where("id", "=", interaction.guildId)
+    .executeTakeFirst();
+  const serverBudgetLabel =
+    guild?.global_budget_cents === null || guild?.global_budget_cents === undefined
+      ? "Unlimited"
+      : `${formatUsd(guild.global_budget_cents)} total`;
+  const serverRemainingLabel =
+    guild?.global_budget_cents === null || guild?.global_budget_cents === undefined
+      ? "Unlimited"
+      : formatUsd(Math.max(0, guild.global_budget_cents - guild.spent_cents));
 
   const embed = new EmbedBuilder()
     .setTitle("Routussy Stats")
@@ -227,6 +240,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       {
         name: "Budget 💸",
         value: `${formatUsd(totalSpent)} spent / ${formatUsd(totalBudget)} allocated`,
+        inline: true,
+      },
+      {
+        name: "Server Cap 🌍",
+        value: `${formatUsd(guild?.spent_cents ?? 0)} spent / ${serverBudgetLabel}\nRemaining ${serverRemainingLabel}`,
         inline: true,
       },
       {

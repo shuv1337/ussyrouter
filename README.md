@@ -71,13 +71,16 @@ Config snippets:
 Admin commands:
 
 - `/set-budget user` sets or overrides a user's total budget
+- `/set-budget global` sets the server-wide API budget cap shared by everyone
+- `/set-budget global-view` shows the current server-wide API budget, spent amount, and remaining amount
+- `/set-budget global-clear` removes the server-wide API budget cap
 - `/model-limits` manages per-model concurrency limits
 - `/routussy-stats` posts public server stats including allocated budget, spend, tokens, and model usage
 - `/routussy-stats target:@user` posts a public per-user breakdown with budget, remaining spend, calls, keys, and top models
 
 User commands:
 
-- `/routussy-help` explains how to request access, create a key, connect a client, and check usage
+- `/routussy-help` explains how to request access, create a key, connect a client, check usage, and includes a thank-you plus coding-plan link for Z.AI
 
 Model concurrency limits:
 

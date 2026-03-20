@@ -9,12 +9,16 @@ export class AbsoluteQuotaAdapter implements QuotaAdapter {
     const key = await db
       .selectFrom("api_keys")
       .innerJoin("users", "users.id", "api_keys.user_id")
+      .innerJoin("guilds", "guilds.id", "users.guild_id")
       .select([
         "api_keys.spend_limit_cents",
         "api_keys.spent_cents as key_spent",
         "api_keys.active",
         "users.budget_cents",
         "users.spent_cents as user_spent",
+        "users.guild_id",
+        "guilds.global_budget_cents",
+        "guilds.spent_cents as guild_spent",
       ])
       .where("api_keys.id", "=", keyId)
       .executeTakeFirst();
@@ -25,6 +29,17 @@ export class AbsoluteQuotaAdapter implements QuotaAdapter {
 
     if (!key.active) {
       return { allowed: false, remainingCents: 0, reason: "Key is revoked" };
+    }
+
+    if (key.global_budget_cents !== null) {
+      const guildRemaining = key.global_budget_cents - key.guild_spent;
+      if (guildRemaining < estimatedCostCents) {
+        return {
+          allowed: false,
+          remainingCents: Math.max(0, guildRemaining),
+          reason: "Server API budget exceeded",
+        };
+      }
     }
 
     // check user-level budget
@@ -54,7 +69,12 @@ export class AbsoluteQuotaAdapter implements QuotaAdapter {
         ? Math.min(userRemaining, key.spend_limit_cents - key.key_spent)
         : userRemaining;
 
-    return { allowed: true, remainingCents: remaining };
+    const effectiveRemaining =
+      key.global_budget_cents !== null
+        ? Math.min(remaining, key.global_budget_cents - key.guild_spent)
+        : remaining;
+
+    return { allowed: true, remainingCents: effectiveRemaining };
   }
 
   async record(
@@ -97,6 +117,22 @@ export class AbsoluteQuotaAdapter implements QuotaAdapter {
       }))
       .where("id", "=", userId)
       .execute();
+
+    const user = await db
+      .selectFrom("users")
+      .select("guild_id")
+      .where("id", "=", userId)
+      .executeTakeFirst();
+
+    if (user) {
+      await db
+        .updateTable("guilds")
+        .set((eb) => ({
+          spent_cents: eb("spent_cents", "+", costCents),
+        }))
+        .where("id", "=", user.guild_id)
+        .execute();
+    }
   }
 
   async getUserUsage(userId: string): Promise<QuotaUsage> {
@@ -157,6 +193,28 @@ export class AbsoluteQuotaAdapter implements QuotaAdapter {
       budgetCents: key.budget_cents,
       spentCents: key.key_spent,
       remainingCents: Math.max(0, userRemaining),
+    };
+  }
+
+  async getGuildUsage(guildId: string): Promise<QuotaUsage> {
+    const db = getDb();
+    const guild = await db
+      .selectFrom("guilds")
+      .select(["global_budget_cents", "spent_cents"])
+      .where("id", "=", guildId)
+      .executeTakeFirst();
+
+    if (!guild) {
+      return { budgetCents: 0, spentCents: 0, remainingCents: 0 };
+    }
+
+    return {
+      budgetCents: guild.global_budget_cents ?? 0,
+      spentCents: guild.spent_cents,
+      remainingCents:
+        guild.global_budget_cents === null
+          ? Number.MAX_SAFE_INTEGER
+          : Math.max(0, guild.global_budget_cents - guild.spent_cents),
     };
   }
 }
