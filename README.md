@@ -83,10 +83,10 @@ User commands:
 
 - `/routussy-help` explains how to request access, create a key, connect a client, check usage, and includes a thank-you plus coding-plan link for Z.AI
 - `/generate image` creates Z.AI images, auto-uploads them into Discord, and charges the result against the user's Routussy budget
-- `/generate video` creates Z.AI videos, returns the generated URL plus cover image, and charges the result against the user's Routussy budget
+- `/generate video` queues a Z.AI video job, then keeps polling in the background and posts the finished video URL plus cover image back into the channel when it is ready, even across bot restarts
 - `/generate ocr` extracts text from an image or PDF with GLM-OCR and charges the result against the user's Routussy budget
 - `/generate transcribe` transcribes a WAV or MP3 clip with GLM-ASR-2512 and charges the result against the user's Routussy budget
-- Generated image/video/OCR/transcription results include a `Share Publicly` button for the original requester
+- Generated image/video/OCR/transcription results include a persistent `Share Publicly` button for the original requester, backed by SQLite so it survives bot restarts
 
 Model concurrency limits:
 

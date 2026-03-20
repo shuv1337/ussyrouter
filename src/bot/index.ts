@@ -22,6 +22,10 @@ import {
   handleSelectMenu,
   handleSetLimitButton,
 } from "./interactions";
+import { deliverPendingVideoJobs } from "../media";
+import { AbsoluteQuotaAdapter } from "../quota";
+import { saveSharePayload } from "./media-share";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 
 const commands = [
   requestKey,
@@ -61,6 +65,7 @@ export function createBot(token: string) {
   const client = new Client({
     intents: [GatewayIntentBits.Guilds],
   });
+  const quota = new AbsoluteQuotaAdapter();
 
   client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     try {
@@ -99,6 +104,68 @@ export function createBot(token: string) {
 
   client.once(Events.ClientReady, (c) => {
     console.log(`Bot logged in as ${c.user.tag}`);
+    const pollAndDeliver = async () => {
+      await deliverPendingVideoJobs(quota, async (job) => {
+      const channel = await c.channels.fetch(job.channelId).catch(() => null);
+      if (!channel?.isTextBased()) {
+        return;
+      }
+
+      const shareId = await saveSharePayload({
+        userId: job.discordUserId,
+        kind: "video",
+        title: "Routussy Video",
+        description: job.prompt ?? "Generated from source image(s)",
+        fields: [
+          { name: "Model", value: `\`${job.model}\``, inline: true },
+          { name: "Cost", value: `$${(job.costCents / 100).toFixed(2)}`, inline: true },
+          { name: "Video URL", value: job.resultUrl },
+        ],
+        imageUrl: job.coverImageUrl ?? undefined,
+        fileUrl: job.resultUrl,
+        mediaJobId: job.taskId,
+        filename: "routussy-video.mp4",
+        createdAt: Date.now(),
+      });
+
+      const embed = new EmbedBuilder()
+        .setTitle("Video Ready")
+        .setColor(0x57f287)
+        .setDescription(job.prompt ?? "Generated from source image(s)")
+        .addFields(
+          { name: "Model", value: `\`${job.model}\``, inline: true },
+          { name: "Cost", value: `$${(job.costCents / 100).toFixed(2)}`, inline: true },
+          { name: "Video URL", value: job.resultUrl }
+        );
+
+      if (job.coverImageUrl) {
+        embed.setImage(job.coverImageUrl);
+      }
+
+      if (!("send" in channel)) {
+        return;
+      }
+
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`share_media:${shareId}`)
+          .setLabel("Share Publicly")
+          .setStyle(ButtonStyle.Secondary)
+      );
+
+      await channel.send({
+        content: `<@${job.discordUserId}> your video is ready.`,
+        embeds: [embed],
+        components: [row],
+        allowedMentions: { users: [job.discordUserId] },
+      });
+      });
+    };
+
+    void pollAndDeliver();
+    setInterval(() => {
+      void pollAndDeliver();
+    }, 15000);
   });
 
   client.login(token);

@@ -1,4 +1,5 @@
 import { acquireModelSlot, releaseModelSlot } from "../concurrency";
+import { createMediaJob, getMediaJobByTaskId, listPendingMediaJobs, updateMediaJob } from "../db/media";
 import { getOrCreateSystemKey } from "../keys";
 import { calculateCostCents } from "../pricing";
 import type { QuotaAdapter } from "../quota";
@@ -94,6 +95,17 @@ export interface VideoResult {
   model: string;
   url: string;
   coverImageUrl?: string;
+  costCents: number;
+}
+
+export interface VideoJobRequest extends VideoRequest {
+  guildId: string;
+  channelId: string;
+}
+
+export interface VideoJobResult {
+  taskId: string;
+  model: string;
   costCents: number;
 }
 
@@ -296,6 +308,73 @@ export async function generateVideo(
   }
 }
 
+export async function startVideoJob(
+  quota: QuotaAdapter,
+  input: VideoJobRequest
+): Promise<VideoJobResult> {
+  const estimatedCostCents = getVideoCostCents(input.model);
+  const systemKeyId = await checkBudget(quota, input.userId, estimatedCostCents);
+  const slot = await acquireModelSlot(input.model);
+
+  if (!slot.allowed) {
+    throw new Error(
+      `Concurrency limit reached for ${slot.displayName} (${input.model}). Active: ${slot.current}/${slot.limit}`
+    );
+  }
+
+  try {
+    const resp = await zaiFetch("/videos/generations", {
+      method: "POST",
+      body: JSON.stringify({
+        model: input.model,
+        prompt: input.prompt,
+        image_url: input.imageUrls,
+        with_audio: input.withAudio,
+        aspect_ratio: input.aspectRatio,
+        size: input.size,
+        duration: input.duration,
+        movement_amplitude: input.movementAmplitude,
+        quality: input.quality,
+        fps: input.fps,
+        user_id: input.discordUserId,
+      }),
+    });
+
+    const payload = (await resp.json()) as ZaiVideoStartPayload;
+    if (!resp.ok) {
+      throw new Error(getZaiErrorMessage(payload, "Video generation failed"));
+    }
+
+    const taskId = payload?.id;
+    if (!taskId) {
+      throw new Error("Z.AI did not return a video task id");
+    }
+
+    await createMediaJob({
+      id: crypto.randomUUID(),
+      task_id: taskId,
+      kind: "video",
+      status: "queued",
+      billed: 0,
+      user_id: input.userId,
+      discord_user_id: input.discordUserId,
+      guild_id: input.guildId,
+      channel_id: input.channelId,
+      system_key_id: systemKeyId,
+      model: input.model,
+      prompt: input.prompt ?? null,
+      cost_cents: estimatedCostCents,
+      result_url: null,
+      cover_image_url: null,
+      error_message: null,
+    });
+
+    return { taskId, model: input.model, costCents: estimatedCostCents };
+  } finally {
+    releaseModelSlot(input.model);
+  }
+}
+
 export async function parseLayout(
   quota: QuotaAdapter,
   input: OcrRequest
@@ -412,5 +491,128 @@ export async function transcribeAudio(
     };
   } finally {
     releaseModelSlot("glm-asr-2512");
+  }
+}
+
+export async function checkVideoJobStatus(taskId: string): Promise<{
+  done: boolean;
+  url?: string;
+  coverImageUrl?: string;
+  error?: string;
+}> {
+  const resp = await zaiFetch(`/async-result/${taskId}`, { method: "GET" });
+  const payload = (await resp.json()) as ZaiVideoResultPayload;
+
+  if (!resp.ok) {
+    throw new Error(getZaiErrorMessage(payload, "Failed to fetch video status"));
+  }
+
+  if (payload.task_status === "PROCESSING") {
+    return { done: false };
+  }
+
+  if (payload.task_status === "FAIL") {
+    return { done: true, error: getZaiErrorMessage(payload, "Video generation failed") };
+  }
+
+  const video = payload?.video_result?.[0];
+  if (!video?.url) {
+    return { done: true, error: "Z.AI did not return a generated video URL" };
+  }
+
+  return {
+    done: true,
+    url: video.url,
+    coverImageUrl: video.cover_image_url,
+  };
+}
+
+export async function getFreshVideoAsset(taskId: string): Promise<{
+  status: "ready" | "processing" | "failed";
+  url?: string;
+  coverImageUrl?: string;
+  error?: string;
+}> {
+  const status = await checkVideoJobStatus(taskId);
+  if (!status.done) {
+    return { status: "processing" };
+  }
+  if (status.error || !status.url) {
+    return { status: "failed", error: status.error ?? "Video generation failed" };
+  }
+  return {
+    status: "ready",
+    url: status.url,
+    coverImageUrl: status.coverImageUrl,
+  };
+}
+
+export async function deliverPendingVideoJobs(
+  quota: QuotaAdapter,
+  publish: (job: {
+    taskId: string;
+    discordUserId: string;
+    channelId: string;
+    model: string;
+    prompt: string | null;
+    costCents: number;
+    resultUrl: string;
+    coverImageUrl: string | null;
+  }) => Promise<void>
+): Promise<void> {
+  const jobs = await listPendingMediaJobs();
+
+  for (const job of jobs) {
+    try {
+      const status = await checkVideoJobStatus(job.task_id);
+      if (!status.done) {
+        await updateMediaJob(job.task_id, { status: "processing" });
+        continue;
+      }
+
+      if (status.error || !status.url) {
+        await updateMediaJob(job.task_id, {
+          status: "failed",
+          error_message: status.error ?? "Unknown video generation failure",
+        });
+        continue;
+      }
+
+      if (!job.billed) {
+        await quota.record(
+          job.system_key_id,
+          job.user_id,
+          job.cost_cents,
+          job.model,
+          0,
+          0,
+          "video.generate"
+        );
+      }
+
+      await publish({
+        taskId: job.task_id,
+        discordUserId: job.discord_user_id,
+        channelId: job.channel_id,
+        model: job.model,
+        prompt: job.prompt,
+        costCents: job.cost_cents,
+        resultUrl: status.url,
+        coverImageUrl: status.coverImageUrl ?? null,
+      });
+
+      await updateMediaJob(job.task_id, {
+        status: "completed",
+        billed: 1,
+        result_url: status.url,
+        cover_image_url: status.coverImageUrl ?? null,
+        error_message: null,
+      });
+    } catch (err) {
+      await updateMediaJob(job.task_id, {
+        status: "failed",
+        error_message: err instanceof Error ? err.message : "Unknown video generation failure",
+      });
+    }
   }
 }

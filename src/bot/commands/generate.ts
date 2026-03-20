@@ -9,7 +9,7 @@ import {
   type Attachment,
   type ChatInputCommandInteraction,
 } from "discord.js";
-import { generateImage, generateVideo, parseLayout, transcribeAudio } from "../../media";
+import { generateImage, parseLayout, startVideoJob, transcribeAudio } from "../../media";
 import { AbsoluteQuotaAdapter } from "../../quota";
 import { ensureGuild, ensureUser, isUserApproved } from "../../db/users";
 import { saveSharePayload } from "../media-share";
@@ -209,7 +209,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         name: attachmentName,
       });
 
-      const shareId = saveSharePayload({
+      const shareId = await saveSharePayload({
         userId: interaction.user.id,
         kind: "image",
         title: "Routussy Image",
@@ -259,9 +259,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         return;
       }
 
-      const result = await generateVideo(quota, {
+      const result = await startVideoJob(quota, {
         userId,
         discordUserId: interaction.user.id,
+        guildId: interaction.guildId,
+        channelId: interaction.channelId,
         model,
         prompt: prompt ?? undefined,
         imageUrls: attachments.map((attachment) => attachment.url),
@@ -269,39 +271,18 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         aspectRatio: interaction.options.getString("aspect_ratio") ?? undefined,
       });
 
-      const shareId = saveSharePayload({
-        userId: interaction.user.id,
-        kind: "video",
-        title: "Routussy Video",
-        description: prompt ?? "Generated from source image(s)",
-        fields: [
-          { name: "Model", value: `\`${result.model}\``, inline: true },
-          { name: "Cost", value: `$${(result.costCents / 100).toFixed(2)}`, inline: true },
-          { name: "Video URL", value: result.url },
-        ],
-        imageUrl: result.coverImageUrl,
-        fileUrl: result.url,
-        filename: "routussy-video.mp4",
-        createdAt: Date.now(),
-      });
-
       const embed = new EmbedBuilder()
-        .setTitle("Video Generated")
-        .setColor(0x57f287)
-        .setDescription(prompt ?? "Generated from source image(s)")
+        .setTitle("Video Queued")
+        .setColor(0xf5a623)
+        .setDescription((prompt ?? "Generated from source image(s)") + "\n\nYour video is processing in the background. I will post the result in this channel when it is ready.")
         .addFields(
           { name: "Model", value: `\`${result.model}\``, inline: true },
           { name: "Cost", value: `$${(result.costCents / 100).toFixed(2)}`, inline: true },
-          { name: "Video URL", value: result.url }
+          { name: "Task ID", value: `\`${result.taskId}\`` }
         );
-
-      if (result.coverImageUrl) {
-        embed.setImage(result.coverImageUrl);
-      }
 
       await interaction.editReply({
         embeds: [embed],
-        components: [buildShareButton(shareId)],
       });
       return;
     }
@@ -317,7 +298,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
       const markdown = result.markdown || "No OCR text returned.";
       const truncated = markdown.length > 3500 ? markdown.slice(0, 3500) + "\n..." : markdown;
-      const shareId = saveSharePayload({
+      const shareId = await saveSharePayload({
         userId: interaction.user.id,
         kind: "ocr",
         title: "Routussy OCR Result",
@@ -379,7 +360,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
       const transcript = result.text || "No transcript returned.";
       const truncated = transcript.length > 3500 ? transcript.slice(0, 3500) + "\n..." : transcript;
-      const shareId = saveSharePayload({
+      const shareId = await saveSharePayload({
         userId: interaction.user.id,
         kind: "transcription",
         title: "Routussy Transcription",

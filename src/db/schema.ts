@@ -7,6 +7,8 @@ export interface Database {
   key_requests: KeyRequestsTable;
   usage_log: UsageLogTable;
   model_limits: ModelLimitsTable;
+  media_shares: MediaSharesTable;
+  media_jobs: MediaJobsTable;
 }
 
 export interface GuildsTable {
@@ -71,6 +73,41 @@ export interface ModelLimitsTable {
   model_id: string;
   display_name: string;
   concurrency_limit: number;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export interface MediaSharesTable {
+  id: string;
+  user_discord_id: string;
+  kind: string;
+  title: string;
+  description: string | null;
+  fields_json: string | null;
+  image_url: string | null;
+  file_url: string | null;
+  media_job_id: string | null;
+  filename: string | null;
+  created_at: Generated<string>;
+}
+
+export interface MediaJobsTable {
+  id: string;
+  task_id: string;
+  kind: string;
+  status: string;
+  billed: Generated<number>;
+  user_id: string;
+  discord_user_id: string;
+  guild_id: string;
+  channel_id: string;
+  system_key_id: number;
+  model: string;
+  prompt: string | null;
+  cost_cents: number;
+  result_url: string | null;
+  cover_image_url: string | null;
+  error_message: string | null;
   created_at: Generated<string>;
   updated_at: Generated<string>;
 }

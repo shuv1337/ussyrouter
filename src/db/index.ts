@@ -239,4 +239,60 @@ export async function migrate() {
     .on("model_limits")
     .column("display_name")
     .execute();
+
+  await db.schema
+    .createTable("media_shares")
+    .ifNotExists()
+    .addColumn("id", "text", (col) => col.primaryKey())
+    .addColumn("user_discord_id", "text", (col) => col.notNull())
+    .addColumn("kind", "text", (col) => col.notNull())
+    .addColumn("title", "text", (col) => col.notNull())
+    .addColumn("description", "text")
+    .addColumn("fields_json", "text")
+    .addColumn("image_url", "text")
+    .addColumn("file_url", "text")
+    .addColumn("media_job_id", "text")
+    .addColumn("filename", "text")
+    .addColumn("created_at", "text", (col) =>
+      col.notNull().defaultTo(CURRENT_TIMESTAMP)
+    )
+    .execute();
+
+  try {
+    await db.schema
+      .alterTable("media_shares")
+      .addColumn("media_job_id", "text")
+      .execute();
+  } catch (err) {
+    if (!String(err).includes("duplicate column name")) {
+      throw err;
+    }
+  }
+
+  await db.schema
+    .createTable("media_jobs")
+    .ifNotExists()
+    .addColumn("id", "text", (col) => col.primaryKey())
+    .addColumn("task_id", "text", (col) => col.notNull().unique())
+    .addColumn("kind", "text", (col) => col.notNull())
+    .addColumn("status", "text", (col) => col.notNull())
+    .addColumn("billed", "integer", (col) => col.notNull().defaultTo(0))
+    .addColumn("user_id", "text", (col) => col.notNull().references("users.id"))
+    .addColumn("discord_user_id", "text", (col) => col.notNull())
+    .addColumn("guild_id", "text", (col) => col.notNull().references("guilds.id"))
+    .addColumn("channel_id", "text", (col) => col.notNull())
+    .addColumn("system_key_id", "integer", (col) => col.notNull().references("api_keys.id"))
+    .addColumn("model", "text", (col) => col.notNull())
+    .addColumn("prompt", "text")
+    .addColumn("cost_cents", "integer", (col) => col.notNull())
+    .addColumn("result_url", "text")
+    .addColumn("cover_image_url", "text")
+    .addColumn("error_message", "text")
+    .addColumn("created_at", "text", (col) =>
+      col.notNull().defaultTo(CURRENT_TIMESTAMP)
+    )
+    .addColumn("updated_at", "text", (col) =>
+      col.notNull().defaultTo(CURRENT_TIMESTAMP)
+    )
+    .execute();
 }

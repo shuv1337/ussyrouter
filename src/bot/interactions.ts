@@ -26,6 +26,7 @@ import {
 import { createKey, revokeKey, setKeySpendLimit, listUserKeys } from "../keys";
 import { getDb } from "../db";
 import { getSharePayload, deleteSharePayload } from "./media-share";
+import { getFreshVideoAsset } from "../media";
 
 async function getKeyOwner(keyId: number): Promise<string | null> {
   const db = getDb();
@@ -58,7 +59,7 @@ export async function handleButton(interaction: ButtonInteraction) {
 }
 
 async function handleShareMedia(interaction: ButtonInteraction, shareId: string) {
-  const payload = getSharePayload(shareId);
+  const payload = await getSharePayload(shareId);
   if (!payload) {
     await interaction.reply({
       content: "That media result is no longer available to share.",
@@ -86,13 +87,31 @@ async function handleShareMedia(interaction: ButtonInteraction, shareId: string)
   if (payload.fields) {
     embed.addFields(payload.fields);
   }
-  if (payload.imageUrl) {
-    embed.setImage(payload.imageUrl);
+
+  let fileUrl = payload.fileUrl;
+  let imageUrl = payload.imageUrl;
+
+  if (payload.kind === "video" && payload.mediaJobId) {
+    const fresh = await getFreshVideoAsset(payload.mediaJobId);
+    if (fresh.status === "ready") {
+      fileUrl = fresh.url;
+      imageUrl = fresh.coverImageUrl ?? payload.imageUrl;
+    } else if (fresh.status === "failed") {
+      await interaction.reply({
+        content: fresh.error ?? "That video is no longer available.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+  }
+
+  if (imageUrl) {
+    embed.setImage(imageUrl);
   }
 
   const files = [] as Array<{ attachment: string; name?: string }>;
-  if (payload.fileUrl) {
-    files.push({ attachment: payload.fileUrl, name: payload.filename });
+  if (fileUrl) {
+    files.push({ attachment: fileUrl, name: payload.filename });
   }
 
   await interaction.reply({
@@ -102,7 +121,7 @@ async function handleShareMedia(interaction: ButtonInteraction, shareId: string)
     allowedMentions: { users: [] },
   });
 
-  deleteSharePayload(shareId);
+  await deleteSharePayload(shareId);
 }
 
 function formatUsd(cents: number): string {
