@@ -15,15 +15,19 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   const embed = new EmbedBuilder()
-    .setTitle("Routussy Help")
+    .setTitle("Routussy Help - Sponsored by Z.AI")
     .setColor(0x5865f2)
     .setDescription(
       "Routussy gives you a personal API key for the shared proxy after an admin approves your budget. The Ussyverse is kindly sponsored by Z.AI - thank you to Z.AI for helping power this weird and wonderful little universe, and special shout out to Rosie."
     )
     .addFields(
       {
+        name: "Thanks",
+        value: "Huge thanks to Z.AI for sponsoring the Ussyverse, and a special shout out to Rosie.",
+      },
+      {
         name: "1. Request Access",
-        value: "Run `/request-key budget:<usd> reason:<why>` and wait for admin review.",
+        value: "Run `/request-key budget:<usd> reason:<why>` and wait for admin review. If you are already approved, the same command can be used to request more budget.",
       },
       {
         name: "2. Create Your Key",

@@ -104,14 +104,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     interaction.guildId
   );
   const user = await getUser(userId);
-
-  if (await isUserApproved(userId)) {
-    await interaction.reply({
-      content: "You already have admin approval. Use `/my-keys` to create and manage keys.",
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
+  const approved = await isUserApproved(userId);
 
   const requestId = await createKeyRequest(
     userId,
@@ -125,7 +118,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const remainingCents = Math.max(0, currentBudgetCents - spentCents);
 
   const embed = new EmbedBuilder()
-    .setTitle("API Key Request")
+    .setTitle(approved ? "Additional Budget Request" : "API Key Request")
     .setColor(0xf5a623)
     .addFields(
       { name: "User", value: `<@${interaction.user.id}>`, inline: true },
@@ -182,8 +175,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   await interaction.reply({
     content:
       reviewChannel.id === interaction.channelId
-        ? "Your access request has been submitted for admin review."
-        : `Your access request has been submitted for admin review in <#${reviewChannel.id}>.`,
+        ? "Your budget request has been submitted for admin review."
+        : `Your budget request has been submitted for admin review in <#${reviewChannel.id}>.`,
     flags: MessageFlags.Ephemeral,
   });
 

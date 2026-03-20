@@ -50,6 +50,7 @@ User flow:
 
 - New users can start with `/routussy-help`
 - Users request access with `/request-key`
+- Approved users can also use `/request-key` again to request additional budget
 - New access requests are posted to `ADMIN_REVIEW_CHANNEL_ID` when set, otherwise to the same channel where the request was made
 - New access requests ping all roles with Discord `Administrator`; if no admin role exists, the server owner is pinged instead
 - Request embeds show the user's current budget and remaining spend before review

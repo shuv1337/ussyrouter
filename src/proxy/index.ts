@@ -1,5 +1,5 @@
 import { resolveKey } from "../keys";
-import { calculateCostCents, ensurePricing } from "../pricing";
+import { calculateCostCents, ensurePricing, listModels } from "../pricing";
 import type { QuotaAdapter } from "../quota";
 import { acquireModelSlot, releaseModelSlot } from "../concurrency";
 import {
@@ -85,6 +85,31 @@ function recordUsage(
   config.quota
     .record(keyId, userId, cost, usage.model, usage.inputTokens, usage.outputTokens, endpoint)
     .catch((err) => console.error("Failed to record usage:", err));
+}
+
+function buildModelsResponse(): Response {
+  const data = [...listModels().entries()]
+    .sort((a, b) => a[1].name.localeCompare(b[1].name))
+    .map(([id, spec]) => ({
+      id,
+      object: "model",
+      created: 0,
+      owned_by: "z-ai",
+      name: spec.name,
+      metadata: {
+        display_name: spec.name,
+        tool_call: spec.tool_call,
+        reasoning: spec.reasoning,
+        attachment: spec.attachment,
+        temperature: spec.temperature,
+        interleaved: spec.interleaved ?? null,
+        cost: spec.cost,
+        limit: spec.limit,
+        modalities: spec.modalities ?? null,
+      },
+    }));
+
+  return Response.json({ object: "list", data });
 }
 
 async function handleProxyRequest(
@@ -181,6 +206,8 @@ async function handleProxyRequest(
       headers: {
         "Content-Type": upstreamResp.headers.get("Content-Type") || "text/event-stream",
         "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
       },
     });
   }
@@ -275,6 +302,12 @@ export function createProxyRoutes(config: ProxyConfig) {
     },
     "/v1/models": {
       GET: async () => {
+        await ensurePricing();
+
+        if (listModels().size > 0) {
+          return buildModelsResponse();
+        }
+
         const resp = await fetch(`${config.upstreamUrl}${prefix}/models`, {
           headers: { Authorization: `Bearer ${config.upstreamApiKey}` },
         });
