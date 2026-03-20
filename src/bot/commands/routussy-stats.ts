@@ -97,6 +97,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         (eb) => eb.fn.sum<number>(eb.case().when("active", "=", 1).then(1).else(0).end()).as("active_key_count"),
       ])
       .where("user_id", "=", user.id)
+      .where("hidden", "=", 0)
       .executeTakeFirst();
 
     const embed = new EmbedBuilder()
@@ -162,6 +163,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       (eb) => eb.fn.sum<number>(eb.case().when("api_keys.active", "=", 1).then(1).else(0).end()).as("active_key_count"),
     ])
     .where("users.guild_id", "=", interaction.guildId)
+    .where("api_keys.hidden", "=", 0)
     .executeTakeFirst();
 
   const requestStats = await db

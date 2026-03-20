@@ -15,6 +15,7 @@ import * as config from "./commands/config";
 import * as modelLimits from "./commands/model-limits";
 import * as routussyHelp from "./commands/routussy-help";
 import * as routussyStats from "./commands/routussy-stats";
+import * as generate from "./commands/generate";
 import {
   handleButton,
   handleModalSubmit,
@@ -31,6 +32,7 @@ const commands = [
   modelLimits,
   routussyHelp,
   routussyStats,
+  generate,
 ];
 
 function getGuildCommandIds(): string[] {

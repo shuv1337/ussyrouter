@@ -33,6 +33,7 @@ export interface ApiKeysTable {
   key_prefix: string; // first 8 chars for display
   user_id: string;
   name: string;
+  hidden: Generated<number>; // 1 = internal/system key, 0 = user-visible key
   spend_limit_cents: number | null; // per-key spend cap, null = use full user budget
   spent_cents: number; // spent on this key specifically
   active: Generated<number>; // 1 = active, 0 = revoked

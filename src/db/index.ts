@@ -110,6 +110,7 @@ export async function migrate() {
       col.notNull().references("users.id")
     )
     .addColumn("name", "text", (col) => col.notNull())
+    .addColumn("hidden", "integer", (col) => col.notNull().defaultTo(0))
     .addColumn("spend_limit_cents", "integer")
     .addColumn("spent_cents", "integer", (col) => col.notNull().defaultTo(0))
     .addColumn("active", "integer", (col) => col.notNull().defaultTo(1))
@@ -117,6 +118,17 @@ export async function migrate() {
       col.notNull().defaultTo(CURRENT_TIMESTAMP)
     )
     .execute();
+
+  try {
+    await db.schema
+      .alterTable("api_keys")
+      .addColumn("hidden", "integer", (col) => col.notNull().defaultTo(0))
+      .execute();
+  } catch (err) {
+    if (!String(err).includes("duplicate column name")) {
+      throw err;
+    }
+  }
 
   await db.schema
     .createTable("key_requests")

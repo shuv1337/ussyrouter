@@ -19,7 +19,8 @@ export interface CreatedKey {
 export async function createKey(
   userId: string,
   name: string,
-  spendLimitCents: number | null = null
+  spendLimitCents: number | null = null,
+  hidden = false
 ): Promise<CreatedKey> {
   const raw = KEY_PREFIX + nanoid(40);
   const hash = hashKey(raw);
@@ -33,6 +34,7 @@ export async function createKey(
       key_prefix: prefix,
       user_id: userId,
       name,
+      hidden: hidden ? 1 : 0,
       spend_limit_cents: spendLimitCents,
       spent_cents: 0,
       active: 1,
@@ -106,6 +108,25 @@ export async function listUserKeys(userId: string) {
       "created_at",
     ])
     .where("user_id", "=", userId)
+    .where("hidden", "=", 0)
     .orderBy("created_at", "desc")
     .execute();
+}
+
+export async function getOrCreateSystemKey(userId: string): Promise<number> {
+  const db = getDb();
+  const existing = await db
+    .selectFrom("api_keys")
+    .select(["id"])
+    .where("user_id", "=", userId)
+    .where("name", "=", "routussy-bot-system")
+    .where("hidden", "=", 1)
+    .executeTakeFirst();
+
+  if (existing) {
+    return existing.id;
+  }
+
+  const created = await createKey(userId, "routussy-bot-system", null, true);
+  return created.id;
 }

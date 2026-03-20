@@ -25,6 +25,7 @@ import {
 } from "../db/users";
 import { createKey, revokeKey, setKeySpendLimit, listUserKeys } from "../keys";
 import { getDb } from "../db";
+import { getSharePayload, deleteSharePayload } from "./media-share";
 
 async function getKeyOwner(keyId: number): Promise<string | null> {
   const db = getDb();
@@ -51,7 +52,57 @@ export async function handleButton(interaction: ButtonInteraction) {
     await showManageKeysMenu(interaction);
   } else if (action === "revoke_key") {
     await handleRevokeKey(interaction, parseInt(firstArg));
+  } else if (action === "share_media") {
+    await handleShareMedia(interaction, firstArg);
   }
+}
+
+async function handleShareMedia(interaction: ButtonInteraction, shareId: string) {
+  const payload = getSharePayload(shareId);
+  if (!payload) {
+    await interaction.reply({
+      content: "That media result is no longer available to share.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (payload.userId !== interaction.user.id) {
+    await interaction.reply({
+      content: "Only the original requester can share this result publicly.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle(payload.title)
+    .setColor(0x57f287)
+    .setTimestamp();
+
+  if (payload.description) {
+    embed.setDescription(payload.description);
+  }
+  if (payload.fields) {
+    embed.addFields(payload.fields);
+  }
+  if (payload.imageUrl) {
+    embed.setImage(payload.imageUrl);
+  }
+
+  const files = [] as Array<{ attachment: string; name?: string }>;
+  if (payload.fileUrl) {
+    files.push({ attachment: payload.fileUrl, name: payload.filename });
+  }
+
+  await interaction.reply({
+    content: `<@${interaction.user.id}> shared a ${payload.kind} result from Routussy.`,
+    embeds: [embed],
+    files,
+    allowedMentions: { users: [] },
+  });
+
+  deleteSharePayload(shareId);
 }
 
 function formatUsd(cents: number): string {

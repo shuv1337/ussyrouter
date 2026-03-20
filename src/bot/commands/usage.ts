@@ -132,6 +132,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .select((eb) => eb.fn.count<number>("api_keys.id").as("count"))
       .where("users.guild_id", "=", interaction.guildId)
       .where("api_keys.active", "=", 1)
+      .where("api_keys.hidden", "=", 0)
       .executeTakeFirst();
 
     const embed = new EmbedBuilder()
