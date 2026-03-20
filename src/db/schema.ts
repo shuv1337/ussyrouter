@@ -43,6 +43,7 @@ export interface KeyRequestsTable {
   guild_id: string;
   discord_user_id: string;
   requested_budget_cents: number;
+  approved_budget_cents: number | null;
   status: Generated<string>; // 'pending' | 'approved' | 'denied'
   reviewed_by: string | null; // admin discord id
   message_id: string | null; // discord message id for the embed

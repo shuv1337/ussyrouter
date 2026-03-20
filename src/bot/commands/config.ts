@@ -25,6 +25,11 @@ function getDefaultModel(): string {
   return listModels().keys().next().value ?? "glm-4.5";
 }
 
+function getSmallModel(): string {
+  if (listModels().has("glm-4.5-flash")) return "glm-4.5-flash";
+  return getDefaultModel();
+}
+
 function buildOpencodeSnippet(): string {
   const models: Record<string, object> = {};
   for (const [id, spec] of listModels()) {
@@ -32,7 +37,22 @@ function buildOpencodeSnippet(): string {
   }
 
   return JSON.stringify(
-    { routussy: { api: API_BASE, models } },
+    {
+      $schema: "https://opencode.ai/config.json",
+      provider: {
+        routussy: {
+          npm: "@ai-sdk/openai",
+          name: "Routussy",
+          options: {
+            baseURL: API_BASE,
+            apiKey: "YOUR_ROUTUSSY_API_KEY",
+          },
+          models,
+        },
+      },
+      model: `routussy/${getDefaultModel()}`,
+      small_model: `routussy/${getSmallModel()}`,
+    },
     null,
     2
   );
@@ -178,8 +198,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await replyWithSnippet(
       interaction,
       buildOpencodeSnippet(),
-      "routussy-provider.json",
-      "Add this to your `provider` block in `opencode.json`. Set `ROUTUSSY_API_KEY` in your env. Use as `routussy/<model>`."
+      "opencode.json",
+      "Add this to `opencode.json`, replace `YOUR_ROUTUSSY_API_KEY`, and pick your preferred `model` if you want a different default."
     );
     return;
   }

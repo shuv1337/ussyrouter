@@ -37,6 +37,7 @@ Optional:
 
 - `UPSTREAM_PREFIX`
 - `PUBLIC_URL`
+- `ADMIN_REVIEW_CHANNEL_ID`
 - `DATABASE_PATH`
 - `GITHUB_TOKEN`
 
@@ -44,21 +45,36 @@ If you are running a public deployment, set `PUBLIC_URL` to your external HTTPS 
 
 User flow:
 
+- New users can start with `/routussy-help`
 - Users request access with `/request-key`
+- New access requests are posted to `ADMIN_REVIEW_CHANNEL_ID` when set, otherwise to the same channel where the request was made
 - New access requests ping all roles with Discord `Administrator`; if no admin role exists, the server owner is pinged instead
-- Admins approve access by setting a budget with `/set-budget user`
+- Request embeds show the user's current budget and remaining spend before review
+- Admins approve access from the request message and can edit the approved budget before confirming
+- Admins can still set or override a user's total budget with `/set-budget user`
 - Approved users create and manage their keys from `/my-keys`
 - Users can inspect usage with `/usage me`
 
 Config snippets:
 
-- `/config format:OpenCode` returns an OpenCode provider block
+- `/config format:OpenCode` returns a full `opencode.json` snippet with `provider.routussy.options.baseURL` and an inline `apiKey`
 - `/config format:OpenAI Compatible` returns base URL and endpoint details
 - `/config format:JavaScript (OpenAI SDK)` returns a JS example
 - `/config format:Python (OpenAI SDK)` returns a Python example
 - `/config format:cURL Example` returns a curl request
 - `/config format:Endpoints / Base URL` returns the public URLs
 - Most formats accept an optional `model` argument for tailored examples
+
+Admin commands:
+
+- `/set-budget user` sets or overrides a user's total budget
+- `/model-limits` manages per-model concurrency limits
+- `/routussy-stats` posts public server stats including allocated budget, spend, tokens, and model usage
+- `/routussy-stats target:@user` posts a public per-user breakdown with budget, remaining spend, calls, keys, and top models
+
+User commands:
+
+- `/routussy-help` explains how to request access, create a key, connect a client, and check usage
 
 Model concurrency limits:
 

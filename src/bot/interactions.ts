@@ -12,6 +12,7 @@ import {
   PermissionFlagsBits,
   MessageFlags,
   StringSelectMenuBuilder,
+  type EmbedField,
 } from "discord.js";
 import {
   getKeyRequest,
@@ -41,7 +42,7 @@ export async function handleButton(interaction: ButtonInteraction) {
   const firstArg = args[0] ?? "0";
 
   if (action === "approve_request") {
-    await handleApproveRequest(interaction, parseInt(firstArg));
+    await showApproveRequestModal(interaction, parseInt(firstArg));
   } else if (action === "deny_request") {
     await handleDenyRequest(interaction, parseInt(firstArg));
   } else if (action === "create_key_modal") {
@@ -53,7 +54,31 @@ export async function handleButton(interaction: ButtonInteraction) {
   }
 }
 
-async function handleApproveRequest(
+function formatUsd(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function replaceOrAppendField(
+  fields: EmbedField[],
+  name: string,
+  value: string,
+  inline = true
+): EmbedField[] {
+  let found = false;
+  const next = fields.map((field) => {
+    if (field.name !== name) return field;
+    found = true;
+    return { name, value, inline };
+  });
+
+  if (!found) {
+    next.push({ name, value, inline });
+  }
+
+  return next;
+}
+
+async function showApproveRequestModal(
   interaction: ButtonInteraction,
   requestId: number
 ) {
@@ -82,22 +107,114 @@ async function handleApproveRequest(
     return;
   }
 
-  await resolveKeyRequest(requestId, "approved", interaction.user.id);
+  const modal = new ModalBuilder()
+    .setCustomId(`approve_request_budget:${requestId}`)
+    .setTitle("Approve Access Request");
+
+  const budgetInput = new TextInputBuilder()
+    .setCustomId("approved_budget")
+    .setLabel("Approved Budget (USD)")
+    .setPlaceholder((request.requested_budget_cents / 100).toFixed(2))
+    .setValue((request.requested_budget_cents / 100).toFixed(2))
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true);
+
+  modal.addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(budgetInput)
+  );
+
+  await interaction.showModal(modal);
+}
+
+async function handleApproveRequest(
+  interaction: ModalSubmitInteraction,
+  requestId: number
+) {
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({
+      content: "Only administrators can approve requests.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const request = await getKeyRequest(requestId);
+  if (!request) {
+    await interaction.reply({
+      content: "Request not found.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (request.status !== "pending") {
+    await interaction.reply({
+      content: `This request has already been ${request.status}.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const approvedBudgetRaw = interaction.fields.getTextInputValue("approved_budget");
+  const approvedBudget = parseFloat(approvedBudgetRaw);
+  if (isNaN(approvedBudget) || approvedBudget < 0) {
+    await interaction.reply({
+      content: "Approved budget must be a valid non-negative number.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const approvedBudgetCents = Math.round(approvedBudget * 100);
+
+  await resolveKeyRequest(
+    requestId,
+    "approved",
+    interaction.user.id,
+    approvedBudgetCents
+  );
 
   const user = await getUser(request.user_id);
   if (user) {
-    const newBudget = user.budget_cents + request.requested_budget_cents;
+    const newBudget = user.budget_cents + approvedBudgetCents;
     await setUserBudget(request.user_id, newBudget);
   }
 
-  const originalEmbed = interaction.message.embeds[0];
-  if (!originalEmbed) return;
+  const sourceMessage = request.channel_id && request.message_id
+    ? await interaction.client.channels
+        .fetch(request.channel_id)
+        .then((channel) => {
+          if (!channel?.isTextBased() || !("messages" in channel)) return null;
+          return channel.messages.fetch(request.message_id!);
+        })
+        .catch(() => null)
+    : null;
 
-  // find the Status field by name rather than hardcoded index
-  const fields = originalEmbed.fields.map((f) =>
-    f.name === "Status"
-      ? { name: "Status", value: `Approved by <@${interaction.user.id}>`, inline: true }
-      : f
+  const originalEmbed = sourceMessage?.embeds[0] ?? null;
+  if (!sourceMessage || !originalEmbed) {
+    await interaction.reply({
+      content: `Approved request #${requestId} for ${formatUsd(approvedBudgetCents)}.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  let fields = originalEmbed.fields.map((field) => ({
+    name: field.name,
+    value: field.value,
+    inline: field.inline ?? false,
+  }));
+  fields = replaceOrAppendField(
+    fields,
+    "Approved Budget",
+    formatUsd(approvedBudgetCents),
+    true
+  );
+  fields = replaceOrAppendField(
+    fields,
+    "Status",
+    `Approved by <@${interaction.user.id}>`,
+    true
   );
 
   const embed = new EmbedBuilder()
@@ -106,9 +223,14 @@ async function handleApproveRequest(
     .setFields(fields)
     .setTimestamp();
 
-  await interaction.update({
+  await sourceMessage.edit({
     embeds: [embed],
     components: [],
+  });
+
+  await interaction.reply({
+    content: `Approved request #${requestId} for ${formatUsd(approvedBudgetCents)}.`,
+    flags: MessageFlags.Ephemeral,
   });
 }
 
@@ -264,6 +386,9 @@ async function handleRevokeKey(
 export async function handleModalSubmit(interaction: ModalSubmitInteraction) {
   if (interaction.customId === "create_key_submit") {
     await handleCreateKeySubmit(interaction);
+  } else if (interaction.customId.startsWith("approve_request_budget:")) {
+    const requestId = parseInt(interaction.customId.split(":")[1] ?? "0");
+    await handleApproveRequest(interaction, requestId);
   } else if (interaction.customId.startsWith("set_spend_limit:")) {
     const keyId = parseInt(interaction.customId.split(":")[1] ?? "0");
     await handleSetSpendLimit(interaction, keyId);

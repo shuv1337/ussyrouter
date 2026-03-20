@@ -97,6 +97,7 @@ export async function migrate() {
     )
     .addColumn("discord_user_id", "text", (col) => col.notNull())
     .addColumn("requested_budget_cents", "integer", (col) => col.notNull())
+    .addColumn("approved_budget_cents", "integer")
     .addColumn("status", "text", (col) => col.notNull().defaultTo("pending"))
     .addColumn("reviewed_by", "text")
     .addColumn("message_id", "text")
@@ -106,6 +107,23 @@ export async function migrate() {
     )
     .addColumn("resolved_at", "text")
     .execute();
+
+  try {
+    await db.schema
+      .alterTable("key_requests")
+      .addColumn("approved_budget_cents", "integer")
+      .execute();
+  } catch (err) {
+    if (!String(err).includes("duplicate column name")) {
+      throw err;
+    }
+  }
+
+  await sql`
+    UPDATE key_requests
+    SET approved_budget_cents = requested_budget_cents
+    WHERE status = 'approved' AND approved_budget_cents IS NULL
+  `.execute(db);
 
   await db.schema
     .createTable("usage_log")

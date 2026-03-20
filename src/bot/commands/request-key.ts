@@ -11,10 +11,13 @@ import {
 import {
   ensureUser,
   ensureGuild,
+  getUser,
   createKeyRequest,
   updateKeyRequestMessage,
   isUserApproved,
 } from "../../db/users";
+
+const ADMIN_REVIEW_CHANNEL_ID = process.env.ADMIN_REVIEW_CHANNEL_ID?.trim() || null;
 
 export const data = new SlashCommandBuilder()
   .setName("request-key")
@@ -64,6 +67,24 @@ async function buildAdminReviewNotice(interaction: ChatInputCommandInteraction) 
   };
 }
 
+async function resolveReviewChannel(interaction: ChatInputCommandInteraction) {
+  const requestedChannelId = ADMIN_REVIEW_CHANNEL_ID ?? interaction.channelId;
+  const channel = await interaction.client.channels
+    .fetch(requestedChannelId)
+    .catch(() => null);
+
+  if (channel?.isTextBased() && "send" in channel) {
+    return channel;
+  }
+
+  const fallback = interaction.channel;
+  if (fallback?.isTextBased() && "send" in fallback) {
+    return fallback;
+  }
+
+  return null;
+}
+
 export async function execute(interaction: ChatInputCommandInteraction) {
   if (!interaction.guildId) {
     await interaction.reply({
@@ -82,6 +103,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     interaction.user.id,
     interaction.guildId
   );
+  const user = await getUser(userId);
 
   if (await isUserApproved(userId)) {
     await interaction.reply({
@@ -98,11 +120,25 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     budgetCents
   );
 
+  const currentBudgetCents = user?.budget_cents ?? 0;
+  const spentCents = user?.spent_cents ?? 0;
+  const remainingCents = Math.max(0, currentBudgetCents - spentCents);
+
   const embed = new EmbedBuilder()
     .setTitle("API Key Request")
     .setColor(0xf5a623)
     .addFields(
       { name: "User", value: `<@${interaction.user.id}>`, inline: true },
+      {
+        name: "Current Budget",
+        value: `$${(currentBudgetCents / 100).toFixed(2)}`,
+        inline: true,
+      },
+      {
+        name: "Remaining Spend",
+        value: `$${(remainingCents / 100).toFixed(2)}`,
+        inline: true,
+      },
       {
         name: "Requested Budget",
         value: `$${budgetUsd.toFixed(2)}`,
@@ -117,7 +153,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`approve_request:${requestId}`)
-      .setLabel("Approve")
+      .setLabel("Approve / Edit Budget")
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId(`deny_request:${requestId}`)
@@ -126,15 +162,30 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   );
 
   const adminNotice = await buildAdminReviewNotice(interaction);
+  const reviewChannel = await resolveReviewChannel(interaction);
 
-  // send the approval embed to the channel
-  const reply = await interaction.reply({
+  if (!reviewChannel) {
+    await interaction.reply({
+      content: "I could not find a text channel to send this review request to.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const reviewMessage = await reviewChannel.send({
     content: adminNotice.content,
     allowedMentions: adminNotice.allowedMentions,
     embeds: [embed],
     components: [row],
-    fetchReply: true,
   });
 
-  await updateKeyRequestMessage(requestId, reply.id, reply.channelId);
+  await interaction.reply({
+    content:
+      reviewChannel.id === interaction.channelId
+        ? "Your access request has been submitted for admin review."
+        : `Your access request has been submitted for admin review in <#${reviewChannel.id}>.`,
+    flags: MessageFlags.Ephemeral,
+  });
+
+  await updateKeyRequestMessage(requestId, reviewMessage.id, reviewChannel.id);
 }

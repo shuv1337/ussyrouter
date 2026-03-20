@@ -13,6 +13,8 @@ import * as myKeys from "./commands/my-keys";
 import * as usage from "./commands/usage";
 import * as config from "./commands/config";
 import * as modelLimits from "./commands/model-limits";
+import * as routussyHelp from "./commands/routussy-help";
+import * as routussyStats from "./commands/routussy-stats";
 import {
   handleButton,
   handleModalSubmit,
@@ -20,7 +22,16 @@ import {
   handleSetLimitButton,
 } from "./interactions";
 
-const commands = [requestKey, setBudget, myKeys, usage, config, modelLimits];
+const commands = [
+  requestKey,
+  setBudget,
+  myKeys,
+  usage,
+  config,
+  modelLimits,
+  routussyHelp,
+  routussyStats,
+];
 
 export async function registerCommands(token: string, clientId: string) {
   const rest = new REST().setToken(token);

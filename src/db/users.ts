@@ -155,13 +155,15 @@ export async function getKeyRequest(requestId: number) {
 export async function resolveKeyRequest(
   requestId: number,
   status: "approved" | "denied",
-  reviewedBy: string
+  reviewedBy: string,
+  approvedBudgetCents?: number | null
 ): Promise<void> {
   const db = getDb();
   await db
     .updateTable("key_requests")
     .set({
       status,
+      approved_budget_cents: approvedBudgetCents ?? null,
       reviewed_by: reviewedBy,
       resolved_at: new Date().toISOString(),
     })
