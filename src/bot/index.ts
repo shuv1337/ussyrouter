@@ -33,12 +33,25 @@ const commands = [
   routussyStats,
 ];
 
+function getGuildCommandIds(): string[] {
+  return (process.env.DISCORD_GUILD_IDS || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
 export async function registerCommands(token: string, clientId: string) {
   const rest = new REST().setToken(token);
   const body = commands.map((c) => c.data.toJSON());
 
   console.log(`Registering ${body.length} slash commands...`);
   await rest.put(Routes.applicationCommands(clientId), { body });
+  for (const guildId of getGuildCommandIds()) {
+    await rest.put(Routes.applicationGuildCommands(clientId, guildId), {
+      body,
+    });
+    console.log(`Registered commands for guild ${guildId}.`);
+  }
   console.log("Commands registered.");
 }
 

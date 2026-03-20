@@ -38,10 +38,13 @@ Optional:
 - `UPSTREAM_PREFIX`
 - `PUBLIC_URL`
 - `ADMIN_REVIEW_CHANNEL_ID`
+- `DISCORD_GUILD_IDS`
 - `DATABASE_PATH`
 - `GITHUB_TOKEN`
 
 If you are running a public deployment, set `PUBLIC_URL` to your external HTTPS URL so `/config` returns usable client snippets.
+
+If you want new slash commands to appear immediately in your server instead of waiting for global propagation, set `DISCORD_GUILD_IDS` to a comma-separated list of guild ids.
 
 User flow:
 
@@ -57,7 +60,7 @@ User flow:
 
 Config snippets:
 
-- `/config format:OpenCode` returns a full `opencode.json` snippet with `provider.routussy.options.baseURL` and an inline `apiKey`
+- `/config format:OpenCode` returns a full `opencode.json` snippet that points OpenCode's official `zai` provider at Routussy with an inline `apiKey`
 - `/config format:OpenAI Compatible` returns base URL and endpoint details
 - `/config format:JavaScript (OpenAI SDK)` returns a JS example
 - `/config format:Python (OpenAI SDK)` returns a Python example

@@ -40,9 +40,7 @@ function buildOpencodeSnippet(): string {
     {
       $schema: "https://opencode.ai/config.json",
       provider: {
-        routussy: {
-          npm: "@ai-sdk/openai",
-          name: "Routussy",
+        zai: {
           options: {
             baseURL: API_BASE,
             apiKey: "YOUR_ROUTUSSY_API_KEY",
@@ -50,8 +48,8 @@ function buildOpencodeSnippet(): string {
           models,
         },
       },
-      model: `routussy/${getDefaultModel()}`,
-      small_model: `routussy/${getSmallModel()}`,
+      model: `zai/${getDefaultModel()}`,
+      small_model: `zai/${getSmallModel()}`,
     },
     null,
     2
@@ -199,7 +197,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       interaction,
       buildOpencodeSnippet(),
       "opencode.json",
-      "Add this to `opencode.json`, replace `YOUR_ROUTUSSY_API_KEY`, and pick your preferred `model` if you want a different default."
+      "Add this to `opencode.json`, replace `YOUR_ROUTUSSY_API_KEY`, and OpenCode will use its official `zai` provider pointed at Routussy."
     );
     return;
   }
