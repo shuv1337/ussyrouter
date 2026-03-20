@@ -1,15 +1,71 @@
 # routussy
 
+Routussy is a Discord-managed OpenAI-compatible proxy. Admins approve users and set budgets, users create their own API keys, and the proxy enforces spend caps and per-model concurrency limits.
+
 To install dependencies:
 
 ```bash
 bun install
 ```
 
-To run:
+To run locally:
 
 ```bash
-bun run index.ts
+bun run src/index.ts
 ```
+
+Hosted endpoint for this deployment:
+
+- Base URL: `https://api.ussyco.de/v1`
+- Health check: `https://api.ussyco.de/health`
+
+To run in Docker:
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+The service listens on port `3000` by default. Configure the required env vars in `.env` first:
+
+- `DISCORD_TOKEN`
+- `DISCORD_CLIENT_ID`
+- `UPSTREAM_URL`
+- `UPSTREAM_API_KEY`
+
+Optional:
+
+- `UPSTREAM_PREFIX`
+- `PUBLIC_URL`
+- `DATABASE_PATH`
+- `GITHUB_TOKEN`
+
+If you are running a public deployment, set `PUBLIC_URL` to your external HTTPS URL so `/config` returns usable client snippets.
+
+User flow:
+
+- Users request access with `/request-key`
+- Admins approve access by setting a budget with `/set-budget user`
+- Approved users create and manage their keys from `/my-keys`
+- Users can inspect usage with `/usage me`
+
+Config snippets:
+
+- `/config format:OpenCode` returns an OpenCode provider block
+- `/config format:OpenAI Compatible` returns base URL and endpoint details
+- `/config format:JavaScript (OpenAI SDK)` returns a JS example
+- `/config format:Python (OpenAI SDK)` returns a Python example
+- `/config format:cURL Example` returns a curl request
+- `/config format:Endpoints / Base URL` returns the public URLs
+- Most formats accept an optional `model` argument for tailored examples
+
+Model concurrency limits:
+
+- Default limits are seeded on startup from `src/model-limits/defaults.ts` using models.dev model ids as the keys.
+- Display names come from the models.dev pricing cache when available.
+- Requests over a model's configured concurrent cap return HTTP `429`.
+- Use `/model-limits list` to inspect current limits.
+- Use `/model-limits set model:<models.dev-id> limit:<number>` to change one later.
+- Use `/model-limits remove model:<models.dev-id>` to delete a custom limit.
 
 This project was created using `bun init` in bun v1.3.10. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.

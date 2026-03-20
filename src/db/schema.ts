@@ -6,6 +6,7 @@ export interface Database {
   api_keys: ApiKeysTable;
   key_requests: KeyRequestsTable;
   usage_log: UsageLogTable;
+  model_limits: ModelLimitsTable;
 }
 
 export interface GuildsTable {
@@ -18,6 +19,7 @@ export interface UsersTable {
   id: string; // visored snowflake
   discord_id: string;
   guild_id: string;
+  approved: number;
   budget_cents: number; // total budget allocated in cents
   spent_cents: number; // total spent in cents
   created_at: Generated<string>;
@@ -59,4 +61,12 @@ export interface UsageLogTable {
   cost_cents: number; // calculated cost in cents
   endpoint: string; // 'completions' | 'responses'
   created_at: Generated<string>;
+}
+
+export interface ModelLimitsTable {
+  model_id: string;
+  display_name: string;
+  concurrency_limit: number;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
 }

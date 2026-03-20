@@ -1,6 +1,7 @@
 import { resolveKey } from "../keys";
 import { calculateCostCents, ensurePricing } from "../pricing";
 import type { QuotaAdapter } from "../quota";
+import { acquireModelSlot, releaseModelSlot } from "../concurrency";
 import {
   extractUsage,
   extractUsageFromSse,
@@ -129,14 +130,35 @@ async function handleProxyRequest(
     );
   }
 
-  const upstreamResp = await fetch(`${config.upstreamUrl}${upstreamPath}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.upstreamApiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  const slot = await acquireModelSlot(requestedModel);
+  if (!slot.allowed) {
+    return errorResponse(
+      429,
+      `Concurrency limit reached for ${slot.displayName} (${requestedModel}). Active: ${slot.current}/${slot.limit}`
+    );
+  }
+
+  let released = false;
+  const releaseSlot = () => {
+    if (released) return;
+    released = true;
+    releaseModelSlot(requestedModel);
+  };
+
+  let upstreamResp: Response;
+  try {
+    upstreamResp = await fetch(`${config.upstreamUrl}${upstreamPath}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.upstreamApiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    releaseSlot();
+    return errorResponse(502, "Failed to reach upstream provider");
+  }
 
   if (isStreaming && upstreamResp.ok && upstreamResp.body) {
     const transform = buildStreamingTransform((accumulated) => {
@@ -150,6 +172,8 @@ async function handleProxyRequest(
     // and handles back-pressure properly
     upstreamResp.body.pipeTo(transform.writable).catch((err) => {
       console.error("Stream pipe error:", err);
+    }).finally(() => {
+      releaseSlot();
     });
 
     return new Response(transform.readable, {
@@ -165,8 +189,11 @@ async function handleProxyRequest(
   try {
     raw = await upstreamResp.text();
   } catch {
+    releaseSlot();
     return errorResponse(502, "Upstream returned unreadable response");
   }
+
+  releaseSlot();
 
   if (upstreamResp.ok) {
     const usage = extractUsage(raw);

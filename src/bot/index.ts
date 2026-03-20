@@ -12,6 +12,7 @@ import * as setBudget from "./commands/set-budget";
 import * as myKeys from "./commands/my-keys";
 import * as usage from "./commands/usage";
 import * as config from "./commands/config";
+import * as modelLimits from "./commands/model-limits";
 import {
   handleButton,
   handleModalSubmit,
@@ -19,7 +20,7 @@ import {
   handleSetLimitButton,
 } from "./interactions";
 
-const commands = [requestKey, setBudget, myKeys, usage, config];
+const commands = [requestKey, setBudget, myKeys, usage, config, modelLimits];
 
 export async function registerCommands(token: string, clientId: string) {
   const rest = new REST().setToken(token);

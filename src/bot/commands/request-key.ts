@@ -12,6 +12,7 @@ import {
   ensureGuild,
   createKeyRequest,
   updateKeyRequestMessage,
+  isUserApproved,
 } from "../../db/users";
 
 export const data = new SlashCommandBuilder()
@@ -49,6 +50,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     interaction.user.id,
     interaction.guildId
   );
+
+  if (await isUserApproved(userId)) {
+    await interaction.reply({
+      content: "You already have admin approval. Use `/my-keys` to create and manage keys.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
 
   const requestId = await createKeyRequest(
     userId,

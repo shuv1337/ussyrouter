@@ -42,12 +42,30 @@ export async function migrate() {
     .addColumn("guild_id", "text", (col) =>
       col.notNull().references("guilds.id")
     )
+    .addColumn("approved", "integer", (col) => col.notNull().defaultTo(0))
     .addColumn("budget_cents", "integer", (col) => col.notNull().defaultTo(0))
     .addColumn("spent_cents", "integer", (col) => col.notNull().defaultTo(0))
     .addColumn("created_at", "text", (col) =>
       col.notNull().defaultTo(CURRENT_TIMESTAMP)
     )
     .execute();
+
+  try {
+    await db.schema
+      .alterTable("users")
+      .addColumn("approved", "integer", (col) => col.notNull().defaultTo(0))
+      .execute();
+  } catch (err) {
+    if (!String(err).includes("duplicate column name")) {
+      throw err;
+    }
+  }
+
+  await sql`
+    UPDATE users
+    SET approved = 1
+    WHERE budget_cents > 0 AND approved = 0
+  `.execute(db);
 
   await db.schema
     .createTable("api_keys")
@@ -110,6 +128,20 @@ export async function migrate() {
     .execute();
 
   await db.schema
+    .createTable("model_limits")
+    .ifNotExists()
+    .addColumn("model_id", "text", (col) => col.primaryKey())
+    .addColumn("display_name", "text", (col) => col.notNull())
+    .addColumn("concurrency_limit", "integer", (col) => col.notNull())
+    .addColumn("created_at", "text", (col) =>
+      col.notNull().defaultTo(CURRENT_TIMESTAMP)
+    )
+    .addColumn("updated_at", "text", (col) =>
+      col.notNull().defaultTo(CURRENT_TIMESTAMP)
+    )
+    .execute();
+
+  await db.schema
     .createIndex("idx_api_keys_hash")
     .ifNotExists()
     .on("api_keys")
@@ -136,5 +168,12 @@ export async function migrate() {
     .ifNotExists()
     .on("usage_log")
     .column("user_id")
+    .execute();
+
+  await db.schema
+    .createIndex("idx_model_limits_display_name")
+    .ifNotExists()
+    .on("model_limits")
+    .column("display_name")
     .execute();
 }

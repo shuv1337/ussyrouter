@@ -43,6 +43,9 @@ export async function ensureUser(
 ): Promise<string> {
   const db = getDb();
   const id = nanoid(16);
+  const guild = await getGuild(guildId);
+  const defaultBudgetCents = guild?.default_budget_cents ?? 0;
+  const approved = defaultBudgetCents > 0 ? 1 : 0;
 
   await db
     .insertInto("users")
@@ -50,7 +53,8 @@ export async function ensureUser(
       id,
       discord_id: discordId,
       guild_id: guildId,
-      budget_cents: 0,
+      approved,
+      budget_cents: defaultBudgetCents,
       spent_cents: 0,
     })
     .onConflict((oc) =>
@@ -95,8 +99,24 @@ export async function setUserBudget(
   const db = getDb();
   await db
     .updateTable("users")
-    .set({ budget_cents: budgetCents })
+    .set({ budget_cents: budgetCents, approved: 1 })
     .where("id", "=", userId)
+    .execute();
+}
+
+export async function isUserApproved(userId: string): Promise<boolean> {
+  const user = await getUser(userId);
+  return user?.approved === 1;
+}
+
+export async function listUserKeyRequests(userId: string, limit = 5) {
+  const db = getDb();
+  return db
+    .selectFrom("key_requests")
+    .selectAll()
+    .where("user_id", "=", userId)
+    .orderBy("created_at", "desc")
+    .limit(limit)
     .execute();
 }
 

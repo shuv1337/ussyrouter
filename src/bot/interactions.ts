@@ -20,6 +20,7 @@ import {
   getUser,
   ensureUser,
   ensureGuild,
+  isUserApproved,
 } from "../db/users";
 import { createKey, revokeKey, setKeySpendLimit, listUserKeys } from "../keys";
 import { getDb } from "../db";
@@ -196,6 +197,16 @@ async function showManageKeysMenu(interaction: ButtonInteraction) {
 
   await ensureGuild(interaction.guildId);
   const userId = await ensureUser(interaction.user.id, interaction.guildId);
+  const approved = await isUserApproved(userId);
+
+  if (!approved) {
+    await interaction.reply({
+      content: "You need admin approval before you can manage API keys.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
   const keys = await listUserKeys(userId);
   const activeKeys = keys.filter((k) => k.active);
 
@@ -264,6 +275,15 @@ async function handleCreateKeySubmit(interaction: ModalSubmitInteraction) {
 
   await ensureGuild(interaction.guildId);
   const userId = await ensureUser(interaction.user.id, interaction.guildId);
+  const approved = await isUserApproved(userId);
+
+  if (!approved) {
+    await interaction.reply({
+      content: "You need admin approval before you can create API keys.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
 
   const name = interaction.fields.getTextInputValue("key_name");
   const limitStr = interaction.fields.getTextInputValue("spend_limit");

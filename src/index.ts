@@ -3,6 +3,7 @@ import { createBot, registerCommands } from "./bot";
 import { createProxyRoutes } from "./proxy";
 import { AbsoluteQuotaAdapter } from "./quota";
 import { ensurePricing } from "./pricing";
+import { seedDefaultModelLimits } from "./model-limits/defaults";
 
 const REQUIRED_ENV = [
   "DISCORD_TOKEN",
@@ -31,6 +32,9 @@ async function main() {
 
   console.log("Loading pricing data...");
   await ensurePricing();
+
+  console.log("Seeding model concurrency limits...");
+  await seedDefaultModelLimits();
 
   console.log("Registering Discord commands...");
   await registerCommands(DISCORD_TOKEN, DISCORD_CLIENT_ID);
