@@ -6,6 +6,7 @@ import {
   ButtonStyle,
   EmbedBuilder,
   MessageFlags,
+  PermissionFlagsBits,
 } from "discord.js";
 import {
   ensureUser,
@@ -31,6 +32,37 @@ export const data = new SlashCommandBuilder()
       .setDescription("Why you need this key")
       .setRequired(false)
   );
+
+async function buildAdminReviewNotice(interaction: ChatInputCommandInteraction) {
+  if (!interaction.guildId) {
+    return { content: "New access request pending review." };
+  }
+
+  const guild = await interaction.client.guilds.fetch(interaction.guildId);
+  const roles = await guild.roles.fetch();
+  const adminRoleIds = roles
+    .filter(
+      (role) =>
+        role &&
+        role.id !== guild.id &&
+        role.permissions.has(PermissionFlagsBits.Administrator)
+    )
+    .map((role) => role.id);
+
+  if (adminRoleIds.length > 0) {
+    return {
+      content:
+        adminRoleIds.map((id) => "<@&" + id + ">").join(" ") +
+        " New access request pending review.",
+      allowedMentions: { roles: adminRoleIds },
+    };
+  }
+
+  return {
+    content: "<@" + guild.ownerId + "> New access request pending review.",
+    allowedMentions: { users: [guild.ownerId] },
+  };
+}
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   if (!interaction.guildId) {
@@ -93,8 +125,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .setStyle(ButtonStyle.Danger)
   );
 
+  const adminNotice = await buildAdminReviewNotice(interaction);
+
   // send the approval embed to the channel
   const reply = await interaction.reply({
+    content: adminNotice.content,
+    allowedMentions: adminNotice.allowedMentions,
     embeds: [embed],
     components: [row],
     fetchReply: true,

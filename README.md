@@ -45,6 +45,7 @@ If you are running a public deployment, set `PUBLIC_URL` to your external HTTPS 
 User flow:
 
 - Users request access with `/request-key`
+- New access requests ping all roles with Discord `Administrator`; if no admin role exists, the server owner is pinged instead
 - Admins approve access by setting a budget with `/set-budget user`
 - Approved users create and manage their keys from `/my-keys`
 - Users can inspect usage with `/usage me`
