@@ -205,7 +205,7 @@ src/
 
 ## Credits
 
-Created by [Kyle Durepos](https://github.com/mojomast) ([@mojomast](https://github.com/mojomast)) and [shuv](https://github.com/shuv1337) ([@shuv1337](https://github.com/shuv1337)).
+Built by [blong](https://github.com/belohnung) ([@belohnung](https://github.com/belohnung)).
 
 Part of [The Ussyverse](https://ussy.host).
 
