@@ -71,8 +71,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
                 zai: {
                   npm: "@ai-sdk/openai-compatible",
                   options: {
-                    apiKey: "env:OPENCODE_API_KEY",
-                    baseURL: "env:OPENCODE_BASE_URL",
+                    apiKey: "{env:OPENCODE_API_KEY}",
+                    baseURL: "{env:OPENCODE_BASE_URL}",
                   },
                 },
               },
