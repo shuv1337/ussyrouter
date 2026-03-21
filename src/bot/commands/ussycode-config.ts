@@ -11,8 +11,6 @@ import {
 } from "../../db/ussycode";
 import { getUssycodeApiKey } from "../../ussycode/keys";
 
-const PUBLIC_URL = process.env.PUBLIC_URL?.trim() || `http://localhost:${process.env.PORT || 3000}`;
-
 export const data = new SlashCommandBuilder()
   .setName("ussycode-config")
   .setDescription("Get your ussycode connection details and API key");
@@ -50,9 +48,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     .setTitle("Ussycode Configuration")
     .setColor(0x9b59b6)
     .addFields(
-      { name: "SSH Access", value: "`ssh ussyco.de`", inline: true },
+      { name: "SSH Access", value: "`ssh -p 2224 dev.ussyco.de`", inline: true },
       { name: "SSH Keys Registered", value: `${sshKeyCount}`, inline: true },
       { name: "Routussy API Key", value: keyDisplay },
+      {
+        name: "VM Web Access",
+        value: "`https://<vmname>.dev.ussyco.de`\nEach VM gets a subdomain based on its name.",
+      },
       {
         name: "How It Works",
         value:
@@ -65,11 +67,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           "```json\n" +
           JSON.stringify(
             {
-              $schema: "https://opencode.ai/config.json",
               provider: {
                 zai: {
-                  api_key: apiKey ? `${apiKey.prefix}...` : "<your-key>",
-                  url: `${PUBLIC_URL}/v1`,
+                  npm: "@ai-sdk/openai-compatible",
+                  options: {
+                    apiKey: "env:OPENCODE_API_KEY",
+                    baseURL: "env:OPENCODE_BASE_URL",
+                  },
                 },
               },
             },
