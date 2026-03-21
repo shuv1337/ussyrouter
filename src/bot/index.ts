@@ -20,6 +20,7 @@ import * as jobs from "./commands/jobs";
 import * as ussycodeRequest from "./commands/ussycode-request";
 import * as ussycodeSsh from "./commands/ussycode-ssh";
 import * as ussycodeConfig from "./commands/ussycode-config";
+import * as inbox from "./commands/inbox";
 import {
   handleButton,
   handleModalSubmit,
@@ -33,6 +34,16 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "disc
 
 const ALERT_CHANNEL_ID =
   process.env.MEDIA_ALERT_CHANNEL_ID?.trim() || process.env.ROUTUSSY_CHANNEL_ID?.trim() || null;
+
+/** Module-level reference to the Discord client for use by background services (e.g. mail delivery). */
+let _client: Client | null = null;
+
+/**
+ * Get the Discord client instance. Returns null if the bot hasn't been created yet.
+ */
+export function getDiscordClient(): Client | null {
+  return _client;
+}
 
 async function resolveAlertChannel(client: Client): Promise<any | null> {
   if (ALERT_CHANNEL_ID) {
@@ -70,6 +81,7 @@ const commands = [
   ussycodeRequest,
   ussycodeSsh,
   ussycodeConfig,
+  inbox,
 ];
 
 function getGuildCommandIds(): string[] {
@@ -106,6 +118,7 @@ export function createBot(token: string) {
   const client = new Client({
     intents: [GatewayIntentBits.Guilds],
   });
+  _client = client;
   const quota = new AbsoluteQuotaAdapter();
 
   const loginWithRetry = () => {

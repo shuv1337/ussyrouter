@@ -9,6 +9,7 @@ import {
   listAllActiveUssycodeSshKeys,
   getUssycodeUserByFingerprint,
 } from "./db/ussycode";
+import { handleMailDelivery } from "./mail/delivery";
 
 const REQUIRED_ENV = [
   "DISCORD_TOKEN",
@@ -131,6 +132,19 @@ async function main() {
             });
           } catch (err) {
             console.error("Error looking up ussycode user:", err);
+            return Response.json({ error: "Internal error" }, { status: 500 });
+          }
+        },
+      },
+      "/ussymail/deliver": {
+        POST: async (req) => {
+          if (!verifyUssycodeAuth(req)) {
+            return Response.json({ error: "Unauthorized" }, { status: 401 });
+          }
+          try {
+            return await handleMailDelivery(req);
+          } catch (err) {
+            console.error("Error handling mail delivery:", err);
             return Response.json({ error: "Internal error" }, { status: 500 });
           }
         },

@@ -418,4 +418,57 @@ export async function migrate() {
     .on("ussycode_ssh_keys")
     .column("user_id")
     .execute();
+
+  // ── Ussymail tables ───────────────────────────────────────────────────
+
+  await db.schema
+    .createTable("mail_inboxes")
+    .ifNotExists()
+    .addColumn("id", "integer", (col) => col.primaryKey().autoIncrement())
+    .addColumn("discord_id", "text", (col) => col.notNull())
+    .addColumn("address", "text", (col) => col.notNull().unique())
+    .addColumn("max_inboxes", "integer", (col) => col.notNull().defaultTo(3))
+    .addColumn("active", "integer", (col) => col.notNull().defaultTo(1))
+    .addColumn("created_at", "text", (col) =>
+      col.notNull().defaultTo(CURRENT_TIMESTAMP)
+    )
+    .execute();
+
+  await db.schema
+    .createIndex("idx_mail_inboxes_discord_id")
+    .ifNotExists()
+    .on("mail_inboxes")
+    .column("discord_id")
+    .execute();
+
+  await db.schema
+    .createIndex("idx_mail_inboxes_address")
+    .ifNotExists()
+    .on("mail_inboxes")
+    .column("address")
+    .execute();
+
+  await db.schema
+    .createTable("mail_messages")
+    .ifNotExists()
+    .addColumn("id", "integer", (col) => col.primaryKey().autoIncrement())
+    .addColumn("inbox_id", "integer", (col) =>
+      col.notNull().references("mail_inboxes.id")
+    )
+    .addColumn("from_address", "text", (col) => col.notNull())
+    .addColumn("subject", "text", (col) => col.notNull())
+    .addColumn("body_text", "text", (col) => col.notNull())
+    .addColumn("body_html", "text")
+    .addColumn("raw_headers", "text")
+    .addColumn("received_at", "text", (col) =>
+      col.notNull().defaultTo(CURRENT_TIMESTAMP)
+    )
+    .execute();
+
+  await db.schema
+    .createIndex("idx_mail_messages_inbox_id")
+    .ifNotExists()
+    .on("mail_messages")
+    .column("inbox_id")
+    .execute();
 }

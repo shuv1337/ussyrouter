@@ -11,6 +11,8 @@ export interface Database {
   media_jobs: MediaJobsTable;
   ussycode_requests: UssycodeRequestsTable;
   ussycode_ssh_keys: UssycodeSshKeysTable;
+  mail_inboxes: MailInboxesTable;
+  mail_messages: MailMessagesTable;
 }
 
 export interface GuildsTable {
@@ -143,4 +145,26 @@ export interface UssycodeSshKeysTable {
   label: string; // user-provided label
   active: Generated<number>; // 1 = active, 0 = removed
   created_at: Generated<string>;
+}
+
+// ── Ussymail tables ───────────────────────────────────────────────────
+
+export interface MailInboxesTable {
+  id: Generated<number>;
+  discord_id: string; // owner's discord user id
+  address: string; // local part only (e.g. "alice", not "alice@basilisk.services")
+  max_inboxes: Generated<number>; // per-user limit override, default 3
+  active: Generated<number>; // 1 = active, 0 = deleted
+  created_at: Generated<string>;
+}
+
+export interface MailMessagesTable {
+  id: Generated<number>;
+  inbox_id: number; // FK to mail_inboxes.id
+  from_address: string; // sender email address
+  subject: string;
+  body_text: string; // plain text body
+  body_html: string | null; // HTML body if present
+  raw_headers: string | null; // full headers for debugging
+  received_at: Generated<string>;
 }
