@@ -199,9 +199,11 @@ async function handleProxyRequest(
     });
 
     // pipe upstream through our TransformStream - avoids manual reader loop
-    // and handles back-pressure properly
+    // and handles back-pressure properly.
+    // The catch handler fires when the client disconnects mid-stream (normal for
+    // LLM tool-call flows) — only log unexpected errors.
     upstreamResp.body.pipeTo(transform.writable).catch((err) => {
-      console.error("Stream pipe error:", err);
+      if (err) console.error("Stream pipe error:", err);
     }).finally(() => {
       releaseSlot();
     });

@@ -73,6 +73,10 @@ async function main() {
 
   Bun.serve({
     port: PORT,
+    // LLM streaming responses can pause for 30+ seconds during reasoning/tool-use.
+    // Bun's default 10s idle timeout kills these connections ("connection reset").
+    // 255 is the maximum allowed value.
+    idleTimeout: 255,
     routes: {
       ...proxyRoutes,
       "/health": {
