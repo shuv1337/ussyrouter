@@ -2,104 +2,213 @@
 
 Routussy is a Discord-managed OpenAI-compatible proxy. Admins approve users and set budgets, users create their own API keys, and the proxy enforces spend caps and per-model concurrency limits.
 
-To install dependencies:
-
-```bash
-bun install
-```
-
-To run locally:
-
-```bash
-bun run src/index.ts
-```
+It also serves as the access-control and billing backend for [ussycode](https://github.com/mojomast/ussycode), a self-hosted SSH dev environment platform. Ussycode VMs authenticate to Routussy using SSH fingerprints, so users get LLM access inside their VMs without managing separate API keys.
 
 Hosted endpoint for this deployment:
 
 - Base URL: `https://api.ussyco.de/v1`
 - Health check: `https://api.ussyco.de/health`
 
-To run in Docker:
+## Quick Start
+
+```bash
+bun install
+bun run src/index.ts
+```
+
+Or with Docker:
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-The service listens on port `3000` by default. Configure the required env vars in `.env` first:
+The service listens on port `3000` by default.
+
+## Environment Variables
+
+Required:
 
 - `DISCORD_TOKEN`
 - `DISCORD_CLIENT_ID`
-- `UPSTREAM_URL`
+- `UPSTREAM_URL` -- the upstream LLM provider base URL (e.g. Z.AI)
 - `UPSTREAM_API_KEY`
 
 Optional:
 
-- `UPSTREAM_PREFIX`
-- `PUBLIC_URL`
-- `ADMIN_REVIEW_CHANNEL_ID`
-- `MEDIA_ALERT_CHANNEL_ID`
-- `ROUTUSSY_CHANNEL_ID`
-- `DISCORD_GUILD_IDS`
-- `DATABASE_PATH`
-- `GITHUB_TOKEN`
+- `UPSTREAM_PREFIX` -- path prefix on the upstream (default `/v1`)
+- `PUBLIC_URL` -- your external HTTPS URL so `/config` returns usable client snippets
+- `ADMIN_REVIEW_CHANNEL_ID` -- where access requests are posted for admin review
+- `MEDIA_ALERT_CHANNEL_ID` -- where media job failure alerts go
+- `ROUTUSSY_CHANNEL_ID` -- fallback channel for requests and alerts
+- `DISCORD_GUILD_IDS` -- comma-separated guild IDs for instant slash command registration
+- `DATABASE_PATH` -- SQLite database location
+- `GITHUB_TOKEN` -- for GitHub-related features
+- `USSYCODE_INTERNAL_KEY` -- shared secret for ussycode internal API endpoints
 
-If you are running a public deployment, set `PUBLIC_URL` to your external HTTPS URL so `/config` returns usable client snippets.
+## How It Works
 
-If you want new slash commands to appear immediately in your server instead of waiting for global propagation, set `DISCORD_GUILD_IDS` to a comma-separated list of guild ids.
+### User Flow
 
-User flow:
+1. New users run `/routussy-help` to learn the ropes
+2. Users request access with `/request-key`, which posts to the admin review channel
+3. Admins approve and set a budget from the request embed
+4. Approved users create and manage their keys from `/my-keys`
+5. Users point any OpenAI-compatible client at the proxy using their key
+6. Routussy enforces per-user budget caps, per-model concurrency limits, and logs all usage
 
-- New users can start with `/routussy-help`
-- Users request access with `/request-key`
-- Approved users can also use `/request-key` again to request additional budget
-- New access requests are posted to `ADMIN_REVIEW_CHANNEL_ID` when set, otherwise to `ROUTUSSY_CHANNEL_ID`, otherwise to the same channel where the request was made
-- Media failure alerts go to `MEDIA_ALERT_CHANNEL_ID` when set; otherwise Routussy falls back to `ROUTUSSY_CHANNEL_ID` or a text channel named `routussy`
-- New access requests ping all roles with Discord `Administrator`; if no admin role exists, the server owner is pinged instead
-- Request embeds show the user's current budget and remaining spend before review
-- Admins approve access from the request message and can edit the approved budget before confirming
-- Admins can still set or override a user's total budget with `/set-budget user`
-- Approved users create and manage their keys from `/my-keys`
-- Users can inspect usage with `/usage me`
+### Proxy
 
-Config snippets:
+Routussy is a transparent OpenAI-compatible proxy. Any client that speaks the OpenAI API protocol works -- OpenCode, Cursor, Aider, Python/JS SDKs, raw cURL.
 
-- `/config format:OpenCode` returns a full `opencode.json` snippet that points OpenCode's official `zai` provider at Routussy with an inline `apiKey`
-- `/config format:OpenAI Compatible` returns base URL and endpoint details
-- `/config format:JavaScript (OpenAI SDK)` returns a JS example
-- `/config format:Python (OpenAI SDK)` returns a Python example
-- `/config format:cURL Example` returns a curl request
-- `/config format:Endpoints / Base URL` returns the public URLs
-- Most formats accept an optional `model` argument for tailored examples
+Keys use the `rsy-` prefix and are stored as SHA-256 hashes. The key is shown exactly once at creation time.
 
-Admin commands:
+### Quota Enforcement
 
-- `/set-budget user` sets or overrides a user's total budget
-- `/set-budget global` sets the server-wide API budget cap shared by everyone
-- `/set-budget global-view` shows the current server-wide API budget, spent amount, and remaining amount
-- `/set-budget global-clear` removes the server-wide API budget cap
-- `/model-limits` manages per-model concurrency limits
-- `/routussy-stats` posts public server stats including allocated budget, spend, tokens, and model usage
-- `/routussy-stats target:@user` posts a public per-user breakdown with budget, remaining spend, calls, keys, and top models
-- `/jobs` shows recent media job ids, models, billing state, and job status for admins
+Three tiers of budget enforcement:
 
-User commands:
+1. **Server-wide** -- optional global cap shared by all users (`/set-budget global`)
+2. **Per-user** -- each user has an individual budget (`/set-budget user`)
+3. **Per-key** -- each key can have its own sub-budget
 
-- `/routussy-help` explains how to request access, create a key, connect a client, check usage, and includes a thank-you plus coding-plan link for Z.AI
-- `/generate image` creates Z.AI images, auto-uploads them into Discord, and charges the result against the user's Routussy budget
-- `/generate video` queues a Z.AI video job, then keeps polling in the background and posts the finished video URL plus cover image back into the channel when it is ready, even across bot restarts
-- `/generate ocr` extracts text from an image or PDF with GLM-OCR and charges the result against the user's Routussy budget
-- `/generate transcribe` transcribes a WAV or MP3 clip with GLM-ASR-2512 and charges the result against the user's Routussy budget
-- Generated image/video/OCR/transcription results include a persistent `Share Publicly` button for the original requester, backed by SQLite so it survives bot restarts
-- Finished videos are cached locally and served from your own deployment under `/media/...` so users are not stuck with fragile upstream signed URLs
+Requests that would exceed any tier are rejected with HTTP 402.
 
-Model concurrency limits:
+## Discord Commands
 
-- Default limits are seeded on startup from `src/model-limits/defaults.ts` using models.dev model ids as the keys.
-- Display names come from the models.dev pricing cache when available.
-- Requests over a model's configured concurrent cap return HTTP `429`.
-- Use `/model-limits list` to inspect current limits.
-- Use `/model-limits set model:<models.dev-id> limit:<number>` to change one later.
-- Use `/model-limits remove model:<models.dev-id>` to delete a custom limit.
+### User Commands
 
-This project was created using `bun init` in bun v1.3.10. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+| Command | Description |
+|---|---|
+| `/routussy-help` | How to get started |
+| `/request-key` | Request access or additional budget |
+| `/my-keys` | Create, list, and revoke your API keys |
+| `/usage me` | Inspect your usage breakdown |
+| `/config` | Get client config snippets (OpenCode, cURL, Python, JS, etc.) |
+| `/generate image` | Generate Z.AI images |
+| `/generate video` | Generate Z.AI videos (async, posts result when done) |
+| `/generate ocr` | Extract text from images/PDFs with GLM-OCR |
+| `/generate transcribe` | Transcribe audio with GLM-ASR |
+
+### Admin Commands
+
+| Command | Description |
+|---|---|
+| `/set-budget user` | Set or override a user's total budget |
+| `/set-budget global` | Set the server-wide budget cap |
+| `/set-budget global-view` | View server-wide budget status |
+| `/set-budget global-clear` | Remove the server-wide budget cap |
+| `/model-limits` | Manage per-model concurrency limits |
+| `/routussy-stats` | Server or per-user stats |
+| `/jobs` | Recent media job status |
+
+### Ussycode Commands
+
+| Command | Description |
+|---|---|
+| `/ussycode-request` | Request ussycode access (requires SSH public key) |
+| `/ussycode-ssh` | Manage SSH keys after approval (add/remove/list) |
+| `/ussycode-config` | View connection details and OpenCode config |
+
+## Ussycode Integration
+
+Routussy is the access-control and billing backend for [ussycode](https://github.com/mojomast/ussycode). The integration works as follows:
+
+### Onboarding
+
+1. A user runs `/ussycode-request` in Discord, providing their SSH public key
+2. The request goes to the admin review channel for approval
+3. On approval, Routussy stores the SSH public key in `ussycode_ssh_keys` and creates a hidden `ussycode-system` API key for the user
+4. The user can now SSH into ussycode and their VM gets automatic LLM access
+
+### SSH Authentication
+
+Ussycode's SSH gateway calls Routussy's internal API to validate non-Tailscale connections:
+
+- `GET /ussycode/authorized-keys` -- returns all approved SSH public keys (used by the SSH gateway to decide whether to allow a connection)
+- `GET /ussycode/user-by-fingerprint?fingerprint=SHA256:...` -- resolves an SSH fingerprint to a Routussy user (used for billing attribution)
+
+Both endpoints are secured with the `USSYCODE_INTERNAL_KEY` shared secret via Bearer token.
+
+### Fingerprint-Based Proxy Auth
+
+VMs inside ussycode authenticate to Routussy's LLM proxy using a special bearer token format:
+
+```
+Authorization: Bearer ussycode-fp:SHA256:<fingerprint>
+```
+
+When Routussy sees this prefix, it resolves the fingerprint to the user's `ussycode-system` key and charges usage against their budget. This means users never need to manually copy API keys into their VMs -- the SSH fingerprint is the identity.
+
+### Data Flow
+
+```
+User SSHs into ussycode VM
+  -> VM has OPENCODE_API_KEY=ussycode-fp:SHA256:<fingerprint>
+  -> OpenCode sends requests to api.ussyco.de/v1 with that token
+  -> Routussy resolves fingerprint -> user -> ussycode-system key
+  -> Request proxied to upstream, usage charged to user's budget
+```
+
+### Database Tables
+
+Routussy has two ussycode-specific tables:
+
+- `ussycode_requests` -- tracks access requests and their approval status
+- `ussycode_ssh_keys` -- stores approved SSH public keys and fingerprints, linked to Routussy users
+
+## Model Concurrency Limits
+
+- Default limits seeded on startup from `src/model-limits/defaults.ts`
+- Display names come from the models.dev pricing cache when available
+- Requests over a model's concurrent cap return HTTP 429
+- Manage with `/model-limits list`, `/model-limits set`, `/model-limits remove`
+
+## Tech Stack
+
+- **Runtime**: [Bun](https://bun.sh)
+- **Language**: TypeScript
+- **Discord**: discord.js v14
+- **Database**: SQLite via Kysely
+- **Deployment**: Docker (see `docker-compose.yml`)
+- **Upstream**: Z.AI GLM models (glm-4.5 through glm-5-turbo)
+
+## Project Structure
+
+```
+src/
+  index.ts              Bun.serve() entry point, routes, ussycode API endpoints
+  bot/
+    index.ts            Discord bot setup
+    interactions.ts     Button/modal interaction handlers (including ussycode approve/deny)
+    media-share.ts      Persistent share buttons for generated media
+    commands/            Slash command definitions
+  proxy/
+    index.ts            OpenAI-compatible proxy with quota enforcement
+    fingerprint-auth.ts Ussycode fingerprint -> API key resolution
+    usage.ts            Usage logging
+  db/
+    index.ts            Migrations and connection
+    schema.ts           Kysely table types (10 tables)
+    users.ts            User/key/quota queries
+    ussycode.ts         Ussycode-specific queries
+    media.ts            Media job queries
+    model-limits.ts     Concurrency limit queries
+  ussycode/
+    keys.ts             Ussycode system key helpers
+    ssh.ts              SSH fingerprint utilities
+  quota/                3-tier budget enforcement
+  pricing/              models.dev pricing cache
+  concurrency/          Per-model concurrency tracking
+  media/                Media generation and storage
+  model-limits/         Default concurrency limit seeds
+```
+
+## Credits
+
+Created by [Kyle Durepos](https://github.com/mojomast) ([@mojomast](https://github.com/mojomast)) and [shuv](https://github.com/shuv1337) ([@shuv1337](https://github.com/shuv1337)).
+
+Part of [The Ussyverse](https://ussy.host).
+
+## License
+
+[MIT](LICENSE)
