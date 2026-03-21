@@ -8,38 +8,43 @@ import {
   MessageFlags,
   PermissionFlagsBits,
 } from "discord.js";
+import { ensureUser, ensureGuild } from "../../db/users";
 import {
-  ensureUser,
-  ensureGuild,
-  getUser,
-  createKeyRequest,
-  updateKeyRequestMessage,
-  isUserApproved,
-} from "../../db/users";
+  createUssycodeRequest,
+  updateUssycodeRequestMessage,
+  isUssycodeApproved,
+  listUserUssycodeRequests,
+} from "../../db/ussycode";
 
 const ADMIN_REVIEW_CHANNEL_ID = process.env.ADMIN_REVIEW_CHANNEL_ID?.trim() || null;
 const ROUTUSSY_CHANNEL_ID = process.env.ROUTUSSY_CHANNEL_ID?.trim() || null;
 
 export const data = new SlashCommandBuilder()
-  .setName("request-key")
-  .setDescription("Request an API key with budget allocation")
-  .addNumberOption((opt) =>
+  .setName("ussycode-request")
+  .setDescription("Request access to ussycode dev environments")
+  .addStringOption((opt) =>
     opt
-      .setName("budget")
-      .setDescription("Requested budget in USD (e.g. 5.00)")
+      .setName("ssh-key")
+      .setDescription("Your SSH public key (starts with ssh-ed25519, ssh-rsa, etc.)")
       .setRequired(true)
-      .setMinValue(0.01)
   )
   .addStringOption((opt) =>
     opt
       .setName("reason")
-      .setDescription("Why you need this key")
+      .setDescription("Why you want ussycode access")
       .setRequired(false)
   );
 
+function validateSshPubkey(key: string): boolean {
+  const trimmed = key.trim();
+  return /^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com)\s+[A-Za-z0-9+/=]+/.test(
+    trimmed
+  );
+}
+
 async function buildAdminReviewNotice(interaction: ChatInputCommandInteraction) {
   if (!interaction.guildId) {
-    return { content: "New access request pending review." };
+    return { content: "New ussycode access request pending review." };
   }
 
   const guild = await interaction.client.guilds.fetch(interaction.guildId);
@@ -57,13 +62,13 @@ async function buildAdminReviewNotice(interaction: ChatInputCommandInteraction) 
     return {
       content:
         adminRoleIds.map((id) => "<@&" + id + ">").join(" ") +
-        " New access request pending review.",
+        " New ussycode access request pending review.",
       allowedMentions: { roles: adminRoleIds },
     };
   }
 
   return {
-    content: "<@" + guild.ownerId + "> New access request pending review.",
+    content: "<@" + guild.ownerId + "> New ussycode access request pending review.",
     allowedMentions: { users: [guild.ownerId] },
   };
 }
@@ -95,49 +100,66 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
-  const budgetUsd = interaction.options.getNumber("budget", true);
+  const sshKey = interaction.options.getString("ssh-key", true).trim();
   const reason = interaction.options.getString("reason") ?? "No reason provided";
-  const budgetCents = Math.round(budgetUsd * 100);
+
+  if (!validateSshPubkey(sshKey)) {
+    await interaction.reply({
+      content:
+        "That doesn't look like a valid SSH public key. It should start with `ssh-ed25519`, `ssh-rsa`, `ecdsa-sha2-*`, etc.\n\n" +
+        "You can find your public key with:\n```\ncat ~/.ssh/id_ed25519.pub\n```",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
 
   await ensureGuild(interaction.guildId);
-  const userId = await ensureUser(
-    interaction.user.id,
-    interaction.guildId
-  );
-  const user = await getUser(userId);
-  const approved = await isUserApproved(userId);
+  const userId = await ensureUser(interaction.user.id, interaction.guildId);
 
-  const requestId = await createKeyRequest(
+  // Check if already approved
+  const alreadyApproved = await isUssycodeApproved(userId);
+  if (alreadyApproved) {
+    await interaction.reply({
+      content:
+        "You already have ussycode access. Use `/ussycode-ssh add` to add more SSH keys, or `/ussycode-config` to get your connection details.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  // Check for existing pending request
+  const existing = await listUserUssycodeRequests(userId, 1);
+  const latestRequest = existing[0];
+  if (latestRequest && latestRequest.status === "pending") {
+    await interaction.reply({
+      content: "You already have a pending ussycode access request. Please wait for admin review.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const requestId = await createUssycodeRequest(
     userId,
     interaction.guildId,
     interaction.user.id,
-    budgetCents
+    sshKey
   );
 
-  const currentBudgetCents = user?.budget_cents ?? 0;
-  const spentCents = user?.spent_cents ?? 0;
-  const remainingCents = Math.max(0, currentBudgetCents - spentCents);
+  // Truncate key for display
+  const keyParts = sshKey.split(" ");
+  const keyType = keyParts[0];
+  const keyData = keyParts[1] ?? "";
+  const keyDisplay = `${keyType} ${keyData.slice(0, 12)}...${keyData.slice(-8)}`;
+  const keyComment = keyParts.slice(2).join(" ") || "no comment";
 
   const embed = new EmbedBuilder()
-    .setTitle(approved ? "Additional Budget Request" : "API Key Request")
-    .setColor(0xf5a623)
+    .setTitle("Ussycode Access Request")
+    .setColor(0x9b59b6) // purple for ussycode
     .addFields(
       { name: "User", value: `<@${interaction.user.id}>`, inline: true },
-      {
-        name: "Current Budget",
-        value: `$${(currentBudgetCents / 100).toFixed(2)}`,
-        inline: true,
-      },
-      {
-        name: "Remaining Spend",
-        value: `$${(remainingCents / 100).toFixed(2)}`,
-        inline: true,
-      },
-      {
-        name: "Requested Budget",
-        value: `$${budgetUsd.toFixed(2)}`,
-        inline: true,
-      },
+      { name: "SSH Key Type", value: `\`${keyType}\``, inline: true },
+      { name: "Key Comment", value: keyComment, inline: true },
+      { name: "Key Preview", value: `\`${keyDisplay}\`` },
       { name: "Reason", value: reason },
       { name: "Status", value: "Pending", inline: true },
       { name: "Request ID", value: `#${requestId}`, inline: true }
@@ -146,11 +168,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setCustomId(`approve_request:${requestId}`)
-      .setLabel("Approve / Edit Budget")
+      .setCustomId(`ussycode_approve:${requestId}`)
+      .setLabel("Approve")
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
-      .setCustomId(`deny_request:${requestId}`)
+      .setCustomId(`ussycode_deny:${requestId}`)
       .setLabel("Deny")
       .setStyle(ButtonStyle.Danger)
   );
@@ -176,10 +198,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   await interaction.reply({
     content:
       reviewChannel.id === interaction.channelId
-        ? "Your budget request has been submitted for admin review."
-        : `Your budget request has been submitted for admin review in <#${reviewChannel.id}>.`,
+        ? "Your ussycode access request has been submitted for admin review."
+        : `Your ussycode access request has been submitted for admin review in <#${reviewChannel.id}>.`,
     flags: MessageFlags.Ephemeral,
   });
 
-  await updateKeyRequestMessage(requestId, reviewMessage.id, reviewChannel.id);
+  await updateUssycodeRequestMessage(requestId, reviewMessage.id, reviewChannel.id);
 }

@@ -8,6 +8,7 @@ import {
   roughTokenEstimate,
   type ParsedUsage,
 } from "./usage";
+import { resolveKeyByFingerprint } from "./fingerprint-auth";
 
 export interface ProxyConfig {
   upstreamUrl: string;
@@ -123,7 +124,11 @@ async function handleProxyRequest(
     return errorResponse(401, "Missing API key");
   }
 
-  const resolved = await resolveKey(token);
+  // Support fingerprint-based auth for ussycode VMs:
+  // Bearer token format: "ussycode-fp:<SHA256:fingerprint>"
+  const resolved = token.startsWith("ussycode-fp:")
+    ? await resolveKeyByFingerprint(token.slice("ussycode-fp:".length))
+    : await resolveKey(token);
   if (!resolved) {
     return errorResponse(401, "Invalid API key");
   }

@@ -16,6 +16,10 @@ import * as modelLimits from "./commands/model-limits";
 import * as routussyHelp from "./commands/routussy-help";
 import * as routussyStats from "./commands/routussy-stats";
 import * as generate from "./commands/generate";
+import * as jobs from "./commands/jobs";
+import * as ussycodeRequest from "./commands/ussycode-request";
+import * as ussycodeSsh from "./commands/ussycode-ssh";
+import * as ussycodeConfig from "./commands/ussycode-config";
 import {
   handleButton,
   handleModalSubmit,
@@ -27,6 +31,31 @@ import { AbsoluteQuotaAdapter } from "../quota";
 import { saveSharePayload } from "./media-share";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 
+const ALERT_CHANNEL_ID =
+  process.env.MEDIA_ALERT_CHANNEL_ID?.trim() || process.env.ROUTUSSY_CHANNEL_ID?.trim() || null;
+
+async function resolveAlertChannel(client: Client): Promise<any | null> {
+  if (ALERT_CHANNEL_ID) {
+    return client.channels.fetch(ALERT_CHANNEL_ID).catch(() => null);
+  }
+
+  for (const guildId of getGuildCommandIds()) {
+    const guild = await client.guilds.fetch(guildId).catch(() => null);
+    if (!guild) continue;
+
+    const channels = await guild.channels.fetch().catch(() => null);
+    const channel = channels
+      ?.filter(Boolean)
+      .find((candidate) => candidate?.isTextBased() && "name" in candidate && candidate.name === "routussy");
+
+    if (channel) {
+      return channel;
+    }
+  }
+
+  return null;
+}
+
 const commands = [
   requestKey,
   setBudget,
@@ -37,6 +66,10 @@ const commands = [
   routussyHelp,
   routussyStats,
   generate,
+  jobs,
+  ussycodeRequest,
+  ussycodeSsh,
+  ussycodeConfig,
 ];
 
 function getGuildCommandIds(): string[] {
@@ -51,12 +84,20 @@ export async function registerCommands(token: string, clientId: string) {
   const body = commands.map((c) => c.data.toJSON());
 
   console.log(`Registering ${body.length} slash commands...`);
-  await rest.put(Routes.applicationCommands(clientId), { body });
+  try {
+    await rest.put(Routes.applicationCommands(clientId), { body });
+  } catch (err) {
+    console.error("Failed to register global commands, continuing:", err);
+  }
   for (const guildId of getGuildCommandIds()) {
-    await rest.put(Routes.applicationGuildCommands(clientId, guildId), {
-      body,
-    });
-    console.log(`Registered commands for guild ${guildId}.`);
+    try {
+      await rest.put(Routes.applicationGuildCommands(clientId, guildId), {
+        body,
+      });
+      console.log(`Registered commands for guild ${guildId}.`);
+    } catch (err) {
+      console.error(`Failed to register commands for guild ${guildId}, continuing:`, err);
+    }
   }
   console.log("Commands registered.");
 }
@@ -66,6 +107,13 @@ export function createBot(token: string) {
     intents: [GatewayIntentBits.Guilds],
   });
   const quota = new AbsoluteQuotaAdapter();
+
+  const loginWithRetry = () => {
+    client.login(token).catch((err) => {
+      console.error("Discord login failed, retrying in 30s:", err);
+      setTimeout(loginWithRetry, 30000);
+    });
+  };
 
   client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     try {
@@ -166,8 +214,46 @@ export function createBot(token: string) {
     setInterval(() => {
       void pollAndDeliver();
     }, 15000);
+
+    setInterval(async () => {
+      try {
+        const { listRecentMediaJobs } = await import("../db/media");
+        const recent = await listRecentMediaJobs(10);
+        const failed = recent.filter(
+          (job) =>
+            job.status === "failed" &&
+            job.error_message &&
+            (!job.alerted_at || job.alerted_error !== job.error_message)
+        );
+        if (failed.length === 0) return;
+        const channel = await resolveAlertChannel(c);
+        if (!channel?.isTextBased() || !("send" in channel)) return;
+        const batch = failed.slice(0, 3);
+        await channel.send({
+          content:
+            "Routussy media job alert:\n" +
+            batch
+              .map(
+                (job) =>
+                  `\`${job.task_id}\` ${job.model} failed: ${job.error_message ?? "unknown error"}`
+              )
+              .join("\n"),
+        });
+        const { updateMediaJob } = await import("../db/media");
+        await Promise.all(
+          batch.map((job) =>
+            updateMediaJob(job.task_id, {
+              alerted_at: new Date().toISOString(),
+              alerted_error: job.error_message ?? null,
+            })
+          )
+        );
+      } catch (err) {
+        console.error("Failed to send media job alert:", err);
+      }
+    }, 60000);
   });
 
-  client.login(token);
+  loginWithRetry();
   return client;
 }

@@ -584,6 +584,7 @@ export async function deliverPendingVideoJobs(
         await updateMediaJob(job.task_id, {
           status: "failed",
           error_message: status.error ?? "Unknown video generation failure",
+          alerted_at: null,
         });
         continue;
       }
@@ -636,6 +637,7 @@ export async function deliverPendingVideoJobs(
       await updateMediaJob(job.task_id, {
         status: "failed",
         error_message: err instanceof Error ? err.message : "Unknown video generation failure",
+        alerted_at: null,
       });
     }
   }

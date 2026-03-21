@@ -33,6 +33,118 @@ export interface ModelSpec {
 const cache = new Map<string, ModelSpec>();
 let lastFetch = 0;
 const CACHE_TTL = 1000 * 60 * 60; // 1 hour
+const FETCH_TIMEOUT_MS = 8000;
+const FALLBACK_MODELS: Record<string, ModelSpec> = {
+  "glm-4.5": {
+    name: "GLM-4.5",
+    tool_call: true,
+    reasoning: true,
+    attachment: false,
+    temperature: true,
+    cost: { input: 0.6, output: 2.2, cache_read: 0.15, cache_write: 0.6 },
+    limit: { context: 128000, output: 16384 },
+    modalities: { input: ["text"], output: ["text"] },
+  },
+  "glm-4.5-flash": {
+    name: "GLM-4.5-Flash",
+    tool_call: true,
+    reasoning: false,
+    attachment: false,
+    temperature: true,
+    cost: { input: 0.2, output: 0.8, cache_read: 0.05, cache_write: 0.2 },
+    limit: { context: 128000, output: 8192 },
+    modalities: { input: ["text"], output: ["text"] },
+  },
+  "glm-5-turbo": {
+    name: "GLM-5-Turbo",
+    tool_call: true,
+    reasoning: true,
+    attachment: false,
+    temperature: true,
+    cost: { input: 0.8, output: 3.0, cache_read: 0.2, cache_write: 0.8 },
+    limit: { context: 128000, output: 16384 },
+    modalities: { input: ["text"], output: ["text"] },
+  },
+  "glm-image": {
+    name: "GLM-Image",
+    tool_call: false,
+    reasoning: false,
+    attachment: false,
+    temperature: true,
+    cost: { input: 0, output: 0, cache_read: 0, cache_write: 0 },
+    limit: { context: 0, output: 0 },
+    modalities: { input: ["text"], output: ["image"] },
+  },
+  "glm-ocr": {
+    name: "GLM-OCR",
+    tool_call: false,
+    reasoning: false,
+    attachment: true,
+    temperature: false,
+    cost: { input: 0.6, output: 2.2, cache_read: 0, cache_write: 0 },
+    limit: { context: 128000, output: 8192 },
+    modalities: { input: ["image", "pdf"], output: ["text"] },
+  },
+  "glm-asr-2512": {
+    name: "GLM-ASR-2512",
+    tool_call: false,
+    reasoning: false,
+    attachment: true,
+    temperature: false,
+    cost: { input: 0, output: 0, cache_read: 0, cache_write: 0 },
+    limit: { context: 0, output: 0 },
+    modalities: { input: ["audio"], output: ["text"] },
+  },
+  "viduq1-text": {
+    name: "ViduQ1-text",
+    tool_call: false,
+    reasoning: false,
+    attachment: false,
+    temperature: true,
+    cost: { input: 0, output: 0, cache_read: 0, cache_write: 0 },
+    limit: { context: 0, output: 0 },
+    modalities: { input: ["text"], output: ["video"] },
+  },
+  "viduq1-image": {
+    name: "ViduQ1-image",
+    tool_call: false,
+    reasoning: false,
+    attachment: true,
+    temperature: true,
+    cost: { input: 0, output: 0, cache_read: 0, cache_write: 0 },
+    limit: { context: 0, output: 0 },
+    modalities: { input: ["image"], output: ["video"] },
+  },
+  "viduq1-start-end": {
+    name: "ViduQ1-Start-End",
+    tool_call: false,
+    reasoning: false,
+    attachment: true,
+    temperature: true,
+    cost: { input: 0, output: 0, cache_read: 0, cache_write: 0 },
+    limit: { context: 0, output: 0 },
+    modalities: { input: ["image"], output: ["video"] },
+  },
+  "cogvideox-3": {
+    name: "CogVideoX-3",
+    tool_call: false,
+    reasoning: false,
+    attachment: true,
+    temperature: true,
+    cost: { input: 0, output: 0, cache_read: 0, cache_write: 0 },
+    limit: { context: 0, output: 0 },
+    modalities: { input: ["text", "image"], output: ["video"] },
+  },
+};
+
+function ensureFallbackModels() {
+  if (cache.size > 0) return;
+  for (const [id, spec] of Object.entries(FALLBACK_MODELS)) {
+    cache.set(id, spec);
+  }
+  lastFetch = Date.now();
+  console.log(`Loaded fallback model cache: ${cache.size} models`);
+}
 
 function parseToml(raw: string): Record<string, any> {
   const result: Record<string, any> = {};
@@ -81,14 +193,25 @@ function parseToml(raw: string): Record<string, any> {
 }
 
 async function fetchModelList(): Promise<string[]> {
-  const resp = await fetch(MODEL_LIST_API, {
-    headers: {
-      Accept: "application/vnd.github.v3+json",
-      ...(process.env.GITHUB_TOKEN
-        ? { Authorization: `token ${process.env.GITHUB_TOKEN}` }
-        : {}),
-    },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let resp: Response;
+  try {
+    resp = await fetch(MODEL_LIST_API, {
+      headers: {
+        Accept: "application/vnd.github.v3+json",
+        ...(process.env.GITHUB_TOKEN
+          ? { Authorization: `token ${process.env.GITHUB_TOKEN}` }
+          : {}),
+      },
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeout);
+    console.error("Failed to fetch model list:", err);
+    return [];
+  }
+  clearTimeout(timeout);
 
   if (!resp.ok) {
     console.error(`Failed to fetch model list: ${resp.status}`);
@@ -102,7 +225,18 @@ async function fetchModelList(): Promise<string[]> {
 }
 
 async function fetchModelSpec(modelId: string): Promise<ModelSpec | null> {
-  const resp = await fetch(`${GITHUB_RAW}/${modelId}.toml`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let resp: Response;
+  try {
+    resp = await fetch(`${GITHUB_RAW}/${modelId}.toml`, {
+      signal: controller.signal,
+    });
+  } catch {
+    clearTimeout(timeout);
+    return null;
+  }
+  clearTimeout(timeout);
   if (!resp.ok) return null;
 
   const raw = await resp.text();
@@ -133,6 +267,10 @@ async function fetchModelSpec(modelId: string): Promise<ModelSpec | null> {
 
 export async function refreshPricing(): Promise<void> {
   const modelIds = await fetchModelList();
+  if (modelIds.length === 0) {
+    ensureFallbackModels();
+    return;
+  }
   const results = await Promise.allSettled(
     modelIds.map((id) => fetchModelSpec(id).then((s) => [id, s] as const))
   );
@@ -149,7 +287,12 @@ export async function refreshPricing(): Promise<void> {
 
 export async function ensurePricing(): Promise<void> {
   if (Date.now() - lastFetch > CACHE_TTL || cache.size === 0) {
-    await refreshPricing();
+    try {
+      await refreshPricing();
+    } catch (err) {
+      console.error("Pricing refresh failed, using fallback model cache:", err);
+      ensureFallbackModels();
+    }
   }
 }
 

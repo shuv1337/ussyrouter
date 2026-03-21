@@ -9,6 +9,8 @@ export interface Database {
   model_limits: ModelLimitsTable;
   media_shares: MediaSharesTable;
   media_jobs: MediaJobsTable;
+  ussycode_requests: UssycodeRequestsTable;
+  ussycode_ssh_keys: UssycodeSshKeysTable;
 }
 
 export interface GuildsTable {
@@ -111,6 +113,34 @@ export interface MediaJobsTable {
   cached_url: string | null;
   cover_image_url: string | null;
   error_message: string | null;
+  alerted_at: string | null;
+  alerted_error: string | null;
   created_at: Generated<string>;
   updated_at: Generated<string>;
+}
+
+export interface UssycodeRequestsTable {
+  id: Generated<number>;
+  user_id: string;
+  guild_id: string;
+  discord_user_id: string;
+  ssh_pubkey: string; // the SSH public key submitted with the request
+  status: Generated<string>; // 'pending' | 'approved' | 'denied'
+  reviewed_by: string | null;
+  api_key_id: number | null; // the auto-generated routussy API key for ussycode
+  message_id: string | null;
+  channel_id: string | null;
+  created_at: Generated<string>;
+  resolved_at: string | null;
+}
+
+export interface UssycodeSshKeysTable {
+  id: Generated<number>;
+  user_id: string; // routussy internal user id
+  discord_user_id: string;
+  ssh_pubkey: string; // authorized_keys format line
+  fingerprint: string; // SHA256 fingerprint for fast lookups
+  label: string; // user-provided label
+  active: Generated<number>; // 1 = active, 0 = removed
+  created_at: Generated<string>;
 }

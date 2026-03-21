@@ -58,15 +58,6 @@ export async function migrate() {
     }
   }
 
-  await sql`
-    UPDATE guilds
-    SET spent_cents = COALESCE((
-      SELECT SUM(users.spent_cents)
-      FROM users
-      WHERE users.guild_id = guilds.id
-    ), 0)
-  `.execute(db);
-
   await db.schema
     .createTable("users")
     .ifNotExists()
@@ -98,6 +89,15 @@ export async function migrate() {
     UPDATE users
     SET approved = 1
     WHERE budget_cents > 0 AND approved = 0
+  `.execute(db);
+
+  await sql`
+    UPDATE guilds
+    SET spent_cents = COALESCE((
+      SELECT SUM(users.spent_cents)
+      FROM users
+      WHERE users.guild_id = guilds.id
+    ), 0)
   `.execute(db);
 
   await db.schema
@@ -309,6 +309,8 @@ export async function migrate() {
     .addColumn("cached_url", "text")
     .addColumn("cover_image_url", "text")
     .addColumn("error_message", "text")
+    .addColumn("alerted_at", "text")
+    .addColumn("alerted_error", "text")
     .addColumn("created_at", "text", (col) =>
       col.notNull().defaultTo(CURRENT_TIMESTAMP)
     )
@@ -338,4 +340,82 @@ export async function migrate() {
       throw err;
     }
   }
+
+  try {
+    await db.schema
+      .alterTable("media_jobs")
+      .addColumn("alerted_at", "text")
+      .execute();
+  } catch (err) {
+    if (!String(err).includes("duplicate column name")) {
+      throw err;
+    }
+  }
+
+  try {
+    await db.schema
+      .alterTable("media_jobs")
+      .addColumn("alerted_error", "text")
+      .execute();
+  } catch (err) {
+    if (!String(err).includes("duplicate column name")) {
+      throw err;
+    }
+  }
+
+  // ── Ussycode tables ───────────────────────────────────────────────────
+
+  await db.schema
+    .createTable("ussycode_requests")
+    .ifNotExists()
+    .addColumn("id", "integer", (col) => col.primaryKey().autoIncrement())
+    .addColumn("user_id", "text", (col) =>
+      col.notNull().references("users.id")
+    )
+    .addColumn("guild_id", "text", (col) =>
+      col.notNull().references("guilds.id")
+    )
+    .addColumn("discord_user_id", "text", (col) => col.notNull())
+    .addColumn("ssh_pubkey", "text", (col) => col.notNull())
+    .addColumn("status", "text", (col) => col.notNull().defaultTo("pending"))
+    .addColumn("reviewed_by", "text")
+    .addColumn("api_key_id", "integer")
+    .addColumn("message_id", "text")
+    .addColumn("channel_id", "text")
+    .addColumn("created_at", "text", (col) =>
+      col.notNull().defaultTo(CURRENT_TIMESTAMP)
+    )
+    .addColumn("resolved_at", "text")
+    .execute();
+
+  await db.schema
+    .createTable("ussycode_ssh_keys")
+    .ifNotExists()
+    .addColumn("id", "integer", (col) => col.primaryKey().autoIncrement())
+    .addColumn("user_id", "text", (col) =>
+      col.notNull().references("users.id")
+    )
+    .addColumn("discord_user_id", "text", (col) => col.notNull())
+    .addColumn("ssh_pubkey", "text", (col) => col.notNull())
+    .addColumn("fingerprint", "text", (col) => col.notNull())
+    .addColumn("label", "text", (col) => col.notNull())
+    .addColumn("active", "integer", (col) => col.notNull().defaultTo(1))
+    .addColumn("created_at", "text", (col) =>
+      col.notNull().defaultTo(CURRENT_TIMESTAMP)
+    )
+    .execute();
+
+  await db.schema
+    .createIndex("idx_ussycode_ssh_keys_fingerprint")
+    .ifNotExists()
+    .on("ussycode_ssh_keys")
+    .column("fingerprint")
+    .execute();
+
+  await db.schema
+    .createIndex("idx_ussycode_ssh_keys_user")
+    .ifNotExists()
+    .on("ussycode_ssh_keys")
+    .column("user_id")
+    .execute();
 }

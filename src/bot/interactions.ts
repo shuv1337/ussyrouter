@@ -27,6 +27,13 @@ import { createKey, revokeKey, setKeySpendLimit, listUserKeys } from "../keys";
 import { getDb } from "../db";
 import { getSharePayload, deleteSharePayload } from "./media-share";
 import { getFreshVideoAsset } from "../media";
+import {
+  getUssycodeRequest,
+  resolveUssycodeRequest,
+  addUssycodeSshKey,
+} from "../db/ussycode";
+import { getOrCreateUssycodeKey } from "../ussycode/keys";
+import { sshFingerprint } from "../ussycode/ssh";
 
 async function getKeyOwner(keyId: number): Promise<string | null> {
   const db = getDb();
@@ -55,6 +62,10 @@ export async function handleButton(interaction: ButtonInteraction) {
     await handleRevokeKey(interaction, parseInt(firstArg));
   } else if (action === "share_media") {
     await handleShareMedia(interaction, firstArg);
+  } else if (action === "ussycode_approve") {
+    await handleUssycodeApprove(interaction, parseInt(firstArg));
+  } else if (action === "ussycode_deny") {
+    await handleUssycodeDeny(interaction, parseInt(firstArg));
   }
 }
 
@@ -607,4 +618,156 @@ export async function handleSetLimitButton(interaction: ButtonInteraction) {
   );
 
   await interaction.showModal(modal);
+}
+
+// ── Ussycode button handlers ──────────────────────────────────────────
+
+async function handleUssycodeApprove(
+  interaction: ButtonInteraction,
+  requestId: number
+) {
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({
+      content: "Only administrators can approve ussycode requests.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const request = await getUssycodeRequest(requestId);
+  if (!request) {
+    await interaction.reply({
+      content: "Request not found.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (request.status !== "pending") {
+    await interaction.reply({
+      content: `This request has already been ${request.status}.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  // Create the ussycode-system API key for this user
+  const ussycodeKey = await getOrCreateUssycodeKey(request.user_id);
+
+  // Compute fingerprint and store the initial SSH key
+  const fingerprint = sshFingerprint(request.ssh_pubkey);
+  if (fingerprint) {
+    await addUssycodeSshKey(
+      request.user_id,
+      request.discord_user_id,
+      request.ssh_pubkey,
+      fingerprint,
+      "initial"
+    );
+  }
+
+  // Resolve the request
+  await resolveUssycodeRequest(
+    requestId,
+    "approved",
+    interaction.user.id,
+    ussycodeKey.id
+  );
+
+  // Update the embed
+  const originalEmbed = interaction.message.embeds[0];
+  if (!originalEmbed) {
+    await interaction.reply({
+      content: `Approved ussycode request #${requestId}.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  let fields = originalEmbed.fields.map((f) => ({
+    name: f.name,
+    value: f.value,
+    inline: f.inline ?? false,
+  }));
+  fields = replaceOrAppendField(
+    fields,
+    "Status",
+    `Approved by <@${interaction.user.id}>`,
+    true
+  );
+  fields = replaceOrAppendField(
+    fields,
+    "API Key",
+    `\`${ussycodeKey.prefix}...\` (ussycode-system)`,
+    true
+  );
+
+  const embed = new EmbedBuilder()
+    .setTitle(originalEmbed.title ?? "Ussycode Access Request")
+    .setColor(0x57f287)
+    .setFields(fields)
+    .setTimestamp();
+
+  await interaction.update({
+    embeds: [embed],
+    components: [],
+  });
+}
+
+async function handleUssycodeDeny(
+  interaction: ButtonInteraction,
+  requestId: number
+) {
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({
+      content: "Only administrators can deny ussycode requests.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const request = await getUssycodeRequest(requestId);
+  if (!request) {
+    await interaction.reply({
+      content: "Request not found.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (request.status !== "pending") {
+    await interaction.reply({
+      content: `This request has already been ${request.status}.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await resolveUssycodeRequest(requestId, "denied", interaction.user.id);
+
+  const originalEmbed = interaction.message.embeds[0];
+  if (!originalEmbed) {
+    await interaction.reply({
+      content: `Denied ussycode request #${requestId}.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const fields = originalEmbed.fields.map((f) =>
+    f.name === "Status"
+      ? { name: "Status", value: `Denied by <@${interaction.user.id}>`, inline: true }
+      : { name: f.name, value: f.value, inline: f.inline ?? false }
+  );
+
+  const embed = new EmbedBuilder()
+    .setTitle(originalEmbed.title ?? "Ussycode Access Request")
+    .setColor(0xed4245)
+    .setFields(fields)
+    .setTimestamp();
+
+  await interaction.update({
+    embeds: [embed],
+    components: [],
+  });
 }

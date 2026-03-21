@@ -55,6 +55,8 @@ export interface MediaJobRow {
   cached_url?: string | null;
   cover_image_url: string | null;
   error_message: string | null;
+  alerted_at?: string | null;
+  alerted_error?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -89,6 +91,16 @@ export async function listPendingMediaJobs() {
     .selectAll()
     .where("status", "in", ["queued", "processing"])
     .orderBy("created_at", "asc")
+    .execute();
+}
+
+export async function listRecentMediaJobs(limit = 20) {
+  const db = getDb();
+  return db
+    .selectFrom("media_jobs")
+    .selectAll()
+    .orderBy("created_at", "desc")
+    .limit(limit)
     .execute();
 }
 

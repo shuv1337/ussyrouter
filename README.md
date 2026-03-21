@@ -38,6 +38,8 @@ Optional:
 - `UPSTREAM_PREFIX`
 - `PUBLIC_URL`
 - `ADMIN_REVIEW_CHANNEL_ID`
+- `MEDIA_ALERT_CHANNEL_ID`
+- `ROUTUSSY_CHANNEL_ID`
 - `DISCORD_GUILD_IDS`
 - `DATABASE_PATH`
 - `GITHUB_TOKEN`
@@ -51,7 +53,8 @@ User flow:
 - New users can start with `/routussy-help`
 - Users request access with `/request-key`
 - Approved users can also use `/request-key` again to request additional budget
-- New access requests are posted to `ADMIN_REVIEW_CHANNEL_ID` when set, otherwise to the same channel where the request was made
+- New access requests are posted to `ADMIN_REVIEW_CHANNEL_ID` when set, otherwise to `ROUTUSSY_CHANNEL_ID`, otherwise to the same channel where the request was made
+- Media failure alerts go to `MEDIA_ALERT_CHANNEL_ID` when set; otherwise Routussy falls back to `ROUTUSSY_CHANNEL_ID` or a text channel named `routussy`
 - New access requests ping all roles with Discord `Administrator`; if no admin role exists, the server owner is pinged instead
 - Request embeds show the user's current budget and remaining spend before review
 - Admins approve access from the request message and can edit the approved budget before confirming
@@ -78,6 +81,7 @@ Admin commands:
 - `/model-limits` manages per-model concurrency limits
 - `/routussy-stats` posts public server stats including allocated budget, spend, tokens, and model usage
 - `/routussy-stats target:@user` posts a public per-user breakdown with budget, remaining spend, calls, keys, and top models
+- `/jobs` shows recent media job ids, models, billing state, and job status for admins
 
 User commands:
 

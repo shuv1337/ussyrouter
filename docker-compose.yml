@@ -1,8 +1,9 @@
 services:
   routussy:
-    build: .
-    ports:
-      - "3000:3000"
+    build:
+      context: .
+      network: host
+    network_mode: host
     env_file:
       - .env
     environment:
