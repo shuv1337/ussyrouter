@@ -9,6 +9,8 @@ import {
   type ParsedUsage,
 } from "./usage";
 import { resolveKeyByFingerprint } from "./fingerprint-auth";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 
 export interface ProxyConfig {
   upstreamUrl: string;
@@ -47,24 +49,130 @@ function estimateInputTokens(body: any): number {
   return 500;
 }
 
-// TransformStream-based streaming proxy matching closedrouter's pattern.
-// Uses pipeTo instead of manual reader loop, with a rolling tail buffer for
-// usage extraction from the final SSE events.
-function buildStreamingTransform(
-  onFinish: (accumulated: string) => void
-): TransformStream<Uint8Array, Uint8Array> {
+// Make an upstream HTTP request using node:http/node:https instead of Bun's
+// fetch(). Bun's fetch body stream has a hardcoded idle timeout on .read()
+// that kills long-running SSE streams (e.g. during LLM reasoning/tool-use
+// pauses where the upstream may be silent for 30+ seconds). Node's HTTP
+// client has no such timeout.
+function upstreamRequest(
+  url: string,
+  apiKey: string,
+  body: string,
+): Promise<{ status: number; headers: Record<string, string>; stream: import("node:stream").Readable }> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const isHttps = parsed.protocol === "https:";
+    const fn = isHttps ? httpsRequest : httpRequest;
+
+    const req = fn(
+      {
+        hostname: parsed.hostname,
+        port: parsed.port || (isHttps ? 443 : 80),
+        path: parsed.pathname + parsed.search,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+          "Accept": "text/event-stream",
+        },
+        // No socket timeout — we want to wait indefinitely for SSE chunks
+      },
+      (res) => {
+        const hdrs: Record<string, string> = {};
+        for (const [k, v] of Object.entries(res.headers)) {
+          if (typeof v === "string") hdrs[k] = v;
+          else if (Array.isArray(v)) hdrs[k] = v.join(", ");
+        }
+        resolve({ status: res.statusCode ?? 502, headers: hdrs, stream: res });
+      },
+    );
+
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+// Convert a Node Readable stream to a web ReadableStream that Bun.serve()
+// can actually consume. Uses a pull-based approach with an internal buffer
+// because Bun.serve() doesn't properly pull from Readable.toWeb() streams.
+function nodeStreamToWebPullBased(
+  nodeStream: import("node:stream").Readable,
+  onFinish: (tail: string) => void,
+  onError: (err: unknown) => void,
+  onChunk?: () => void,
+): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
   const TAIL_SIZE = 4096;
   let tail = "";
+  
+  // Internal buffer: node stream pushes data here, pull() drains it
+  const pending: Uint8Array[] = [];
+  let nodeEnded = false;
+  let nodeError: unknown = null;
+  let waiting: (() => void) | null = null; // resolve function for pull() awaiting data
 
-  return new TransformStream({
-    transform(chunk, controller) {
-      controller.enqueue(chunk);
-      const text = decoder.decode(chunk, { stream: true });
-      tail = (tail + text).slice(-TAIL_SIZE);
+  nodeStream.on("data", (chunk: Buffer) => {
+    const bytes = new Uint8Array(chunk);
+    pending.push(bytes);
+    onChunk?.();
+    const text = decoder.decode(bytes, { stream: true });
+    tail = (tail + text).slice(-TAIL_SIZE);
+    // Wake up pull() if it's waiting
+    if (waiting) { const w = waiting; waiting = null; w(); }
+  });
+
+  nodeStream.on("end", () => {
+    nodeEnded = true;
+    if (waiting) { const w = waiting; waiting = null; w(); }
+  });
+
+  nodeStream.on("error", (err) => {
+    nodeError = err;
+    if (waiting) { const w = waiting; waiting = null; w(); }
+  });
+
+  return new ReadableStream({
+    async pull(controller) {
+      // Drain any buffered chunks first
+      while (pending.length > 0) {
+        controller.enqueue(pending.shift()!);
+      }
+      
+      if (nodeEnded) {
+        onFinish(tail);
+        controller.close();
+        return;
+      }
+      
+      if (nodeError) {
+        onError(nodeError);
+        controller.close();
+        return;
+      }
+
+      // Wait for more data from the node stream
+      await new Promise<void>((resolve) => { waiting = resolve; });
+      
+      // Drain what arrived
+      while (pending.length > 0) {
+        controller.enqueue(pending.shift()!);
+      }
+      
+      if (nodeEnded) {
+        onFinish(tail);
+        controller.close();
+        return;
+      }
+      
+      if (nodeError) {
+        onError(nodeError);
+        controller.close();
+        return;
+      }
     },
-    flush() {
-      onFinish(tail);
+    cancel() {
+      nodeStream.destroy();
     },
   });
 }
@@ -175,6 +283,74 @@ async function handleProxyRequest(
     releaseModelSlot(requestedModel);
   };
 
+  // For streaming requests, use node:http/node:https to avoid Bun's fetch
+  // body stream idle timeout. For non-streaming, Bun's fetch is fine since
+  // the body is consumed immediately with .text().
+  if (isStreaming) {
+    const reqId = Math.random().toString(36).slice(2, 8);
+    const t0 = Date.now();
+    console.log(`[${reqId}] stream START model=${requestedModel} user=${resolved.userId}`);
+
+    let upstream: { status: number; headers: Record<string, string>; stream: import("node:stream").Readable };
+    try {
+      upstream = await upstreamRequest(
+        `${config.upstreamUrl}${upstreamPath}`,
+        config.upstreamApiKey,
+        JSON.stringify(body),
+      );
+    } catch (err) {
+      releaseSlot();
+      console.error(`[${reqId}] upstream connect failed after ${Date.now() - t0}ms:`, err);
+      return errorResponse(502, "Failed to reach upstream provider");
+    }
+
+    console.log(`[${reqId}] upstream responded status=${upstream.status} after ${Date.now() - t0}ms`);
+
+    if (upstream.status >= 200 && upstream.status < 300) {
+      let chunks = 0;
+      const webStream = nodeStreamToWebPullBased(
+        upstream.stream,
+        (accumulated: string) => {
+          console.log(`[${reqId}] stream END chunks=${chunks} elapsed=${Date.now() - t0}ms`);
+          const usage = extractUsageFromSse(accumulated);
+          if (usage) {
+            recordUsage(usage, config, resolved.id, resolved.userId, endpoint);
+          }
+          releaseSlot();
+        },
+        (err: unknown) => {
+          console.error(`[${reqId}] stream ERROR chunks=${chunks} elapsed=${Date.now() - t0}ms:`, err);
+          releaseSlot();
+        },
+        () => { chunks++; }, // onChunk counter
+      );
+
+      return new Response(webStream, {
+        status: upstream.status,
+        headers: {
+          "Content-Type": upstream.headers["content-type"] || "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
+        },
+      });
+    }
+
+    // Non-2xx streaming response — read full body and return as error
+    const chunks: Buffer[] = [];
+    for await (const chunk of upstream.stream) {
+      chunks.push(chunk);
+    }
+    releaseSlot();
+    const raw = Buffer.concat(chunks).toString();
+    return new Response(raw, {
+      status: upstream.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Non-streaming path: use Bun's fetch (no idle timeout issue since body
+  // is consumed immediately)
   let upstreamResp: Response;
   try {
     upstreamResp = await fetch(`${config.upstreamUrl}${upstreamPath}`, {
@@ -188,35 +364,6 @@ async function handleProxyRequest(
   } catch {
     releaseSlot();
     return errorResponse(502, "Failed to reach upstream provider");
-  }
-
-  if (isStreaming && upstreamResp.ok && upstreamResp.body) {
-    const transform = buildStreamingTransform((accumulated) => {
-      const usage = extractUsageFromSse(accumulated);
-      if (usage) {
-        recordUsage(usage, config, resolved.id, resolved.userId, endpoint);
-      }
-    });
-
-    // pipe upstream through our TransformStream - avoids manual reader loop
-    // and handles back-pressure properly.
-    // The catch handler fires when the client disconnects mid-stream (normal for
-    // LLM tool-call flows) — only log unexpected errors.
-    upstreamResp.body.pipeTo(transform.writable).catch((err) => {
-      if (err) console.error("Stream pipe error:", err);
-    }).finally(() => {
-      releaseSlot();
-    });
-
-    return new Response(transform.readable, {
-      status: upstreamResp.status,
-      headers: {
-        "Content-Type": upstreamResp.headers.get("Content-Type") || "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-        "X-Accel-Buffering": "no",
-      },
-    });
   }
 
   let raw: string;
