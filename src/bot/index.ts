@@ -23,6 +23,7 @@ import * as ussycodeConfig from "./commands/ussycode-config";
 import * as ussycodeHelp from "./commands/ussycode-help";
 import * as ussycodeQuota from "./commands/ussycode-quota";
 import * as ussycodeCapacityRequest from "./commands/ussycode-capacity-request";
+import * as ussycodeVms from "./commands/ussycode-vms";
 import {
   handleButton,
   handleModalSubmit,
@@ -76,6 +77,7 @@ const commands = [
   ussycodeHelp,
   ussycodeQuota,
   ussycodeCapacityRequest,
+  ussycodeVms,
 ];
 
 function getGuildCommandIds(): string[] {
