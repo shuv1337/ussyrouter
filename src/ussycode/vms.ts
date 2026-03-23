@@ -1,4 +1,4 @@
-import { ussycodeInternalGet } from "./client";
+import { ussycodeInternalGet, ussycodeInternalPost } from "./client";
 
 export interface UssycodeVMNode {
   id: string;
@@ -66,4 +66,70 @@ export async function listUssycodeVMsByHandle(
 
   console.log("[ussycode.vms] success", { handle, count: vms.length });
   return vms;
+}
+
+export class UssycodeVMActionError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public body: string
+  ) {
+    super(message);
+  }
+}
+
+export async function stopVMByHandle(
+  handle: string,
+  vmName: string
+): Promise<void> {
+  console.log("[ussycode.vms] stopping", { handle, vmName });
+
+  const resp = await ussycodeInternalPost("/internal/vm/stop", {
+    handle,
+    vm_name: vmName,
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    console.error("[ussycode.vms] stop failed", {
+      handle,
+      vmName,
+      status: resp.status,
+      body,
+    });
+    throw new UssycodeVMActionError(
+      `ussycode VM stop failed: ${resp.status} ${body}`,
+      resp.status,
+      body
+    );
+  }
+
+  console.log("[ussycode.vms] stopped", { handle, vmName });
+}
+
+export async function startVMByHandle(
+  handle: string,
+  vmName: string
+): Promise<void> {
+  console.log("[ussycode.vms] starting", { handle, vmName });
+
+  const resp = await ussycodeInternalPost("/internal/vm/start", {
+    handle,
+    vm_name: vmName,
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    console.error("[ussycode.vms] start failed", {
+      handle,
+      vmName,
+      status: resp.status,
+      body,
+    });
+    throw new UssycodeVMActionError(
+      `ussycode VM start failed: ${resp.status} ${body}`,
+      resp.status,
+      body
+    );
+  }
+
+  console.log("[ussycode.vms] started", { handle, vmName });
 }

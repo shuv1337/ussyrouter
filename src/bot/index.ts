@@ -24,6 +24,8 @@ import * as ussycodeHelp from "./commands/ussycode-help";
 import * as ussycodeQuota from "./commands/ussycode-quota";
 import * as ussycodeCapacityRequest from "./commands/ussycode-capacity-request";
 import * as ussycodeVms from "./commands/ussycode-vms";
+import * as ussycodeStart from "./commands/ussycode-start";
+import * as ussycodeStop from "./commands/ussycode-stop";
 import {
   handleButton,
   handleModalSubmit,
@@ -78,6 +80,8 @@ const commands = [
   ussycodeQuota,
   ussycodeCapacityRequest,
   ussycodeVms,
+  ussycodeStart,
+  ussycodeStop,
 ];
 
 function getGuildCommandIds(): string[] {
@@ -125,7 +129,13 @@ export function createBot(token: string) {
 
   client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     try {
-      if (interaction.isChatInputCommand()) {
+      if (interaction.isAutocomplete()) {
+        const cmd = commands.find(
+          (c) => c.data.name === interaction.commandName
+        ) as any;
+        if (cmd?.autocomplete) await cmd.autocomplete(interaction);
+        return;
+      } else if (interaction.isChatInputCommand()) {
         const cmd = commands.find(
           (c) => c.data.name === interaction.commandName
         );
