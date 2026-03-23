@@ -1,5 +1,4 @@
-const USSYCODE_API_BASE = process.env.USSYCODE_API_BASE?.trim() || "https://apiussy.shuv.dev";
-const USSYCODE_INTERNAL_KEY = process.env.USSYCODE_INTERNAL_KEY?.trim() || null;
+import { ussycodeInternalGet } from "./client";
 
 export interface UssycodeTrustTier {
   key: string;
@@ -13,20 +12,8 @@ export interface UssycodeTrustTier {
   requestable: boolean;
 }
 
-function requireInternalKey(): string {
-  if (!USSYCODE_INTERNAL_KEY) {
-    throw new Error("USSYCODE_INTERNAL_KEY is not configured");
-  }
-  return USSYCODE_INTERNAL_KEY;
-}
-
 export async function listUssycodeTrustTiers(): Promise<UssycodeTrustTier[]> {
-  const internalKey = requireInternalKey();
-  const resp = await fetch(`${USSYCODE_API_BASE}/internal/trust-tiers`, {
-    headers: {
-      Authorization: `Bearer ${internalKey}`,
-    },
-  });
+  const resp = await ussycodeInternalGet("/internal/trust-tiers");
 
   if (!resp.ok) {
     throw new Error(`ussycode trust-tier lookup failed: ${resp.status} ${await resp.text()}`);

@@ -1,7 +1,5 @@
 import { getDb } from "../db";
-
-const USSYCODE_API_BASE = process.env.USSYCODE_API_BASE?.trim() || "https://apiussy.shuv.dev";
-const USSYCODE_INTERNAL_KEY = process.env.USSYCODE_INTERNAL_KEY?.trim() || null;
+import { ussycodeInternalGet, ussycodeInternalPost } from "./client";
 
 export interface UssycodeQuotaStatus {
   handle: string;
@@ -12,13 +10,6 @@ export interface UssycodeQuotaStatus {
   cpu_limit: number;
   ram_limit_mb: number;
   disk_limit_mb: number;
-}
-
-function requireInternalKey(): string {
-  if (!USSYCODE_INTERNAL_KEY) {
-    throw new Error("USSYCODE_INTERNAL_KEY is not configured");
-  }
-  return USSYCODE_INTERNAL_KEY;
 }
 
 function deriveUssycodeHandle(discordId: string): string {
@@ -46,15 +37,7 @@ function deriveUssycodeHandle(discordId: string): string {
 }
 
 export async function getUssycodeQuotaByHandle(handle: string): Promise<UssycodeQuotaStatus> {
-  const internalKey = requireInternalKey();
-  const url = new URL(`${USSYCODE_API_BASE}/internal/quota`);
-  url.searchParams.set("handle", handle);
-
-  const resp = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${internalKey}`,
-    },
-  });
+  const resp = await ussycodeInternalGet("/internal/quota", { handle });
 
   if (!resp.ok) {
     throw new Error(`ussycode quota lookup failed: ${resp.status} ${await resp.text()}`);
@@ -64,14 +47,9 @@ export async function getUssycodeQuotaByHandle(handle: string): Promise<Ussycode
 }
 
 export async function setUssycodeTrustByHandle(handle: string, trustLevel: string): Promise<UssycodeQuotaStatus> {
-  const internalKey = requireInternalKey();
-  const resp = await fetch(`${USSYCODE_API_BASE}/internal/trust`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${internalKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ handle, trust_level: trustLevel }),
+  const resp = await ussycodeInternalPost("/internal/trust", {
+    handle,
+    trust_level: trustLevel,
   });
 
   if (!resp.ok) {
