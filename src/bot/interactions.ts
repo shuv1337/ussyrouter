@@ -40,6 +40,31 @@ import { getOrCreateUssycodeKey } from "../ussycode/keys";
 import { sshFingerprint } from "../ussycode/ssh";
 import { getApprovedUssycodeHandleForDiscord, setUssycodeTrustByHandle } from "../ussycode/quota";
 
+const ADMIN_REVIEW_ROLE_ID = process.env.ADMIN_REVIEW_ROLE_ID?.trim() || null;
+
+function canReviewRequests(
+  interaction: ButtonInteraction | ModalSubmitInteraction
+): boolean {
+  if (interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    return true;
+  }
+
+  if (!ADMIN_REVIEW_ROLE_ID) {
+    return false;
+  }
+
+  const roles = interaction.member?.roles;
+  if (!roles) {
+    return false;
+  }
+
+  if ("cache" in roles) {
+    return roles.cache.has(ADMIN_REVIEW_ROLE_ID);
+  }
+
+  return Array.isArray(roles) && roles.includes(ADMIN_REVIEW_ROLE_ID);
+}
+
 async function getKeyOwner(keyId: number): Promise<string | null> {
   const db = getDb();
   const key = await db
@@ -172,9 +197,9 @@ async function showApproveRequestModal(
   interaction: ButtonInteraction,
   requestId: number
 ) {
-  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+  if (!canReviewRequests(interaction)) {
     await interaction.reply({
-      content: "Only administrators can approve requests.",
+      content: "Only administrators or review-role members can approve requests.",
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -220,9 +245,9 @@ async function handleApproveRequest(
   interaction: ModalSubmitInteraction,
   requestId: number
 ) {
-  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+  if (!canReviewRequests(interaction)) {
     await interaction.reply({
-      content: "Only administrators can approve requests.",
+      content: "Only administrators or review-role members can approve requests.",
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -328,9 +353,9 @@ async function handleDenyRequest(
   interaction: ButtonInteraction,
   requestId: number
 ) {
-  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+  if (!canReviewRequests(interaction)) {
     await interaction.reply({
-      content: "Only administrators can deny requests.",
+      content: "Only administrators or review-role members can deny requests.",
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -635,9 +660,9 @@ async function handleUssycodeApprove(
   interaction: ButtonInteraction,
   requestId: number
 ) {
-  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+  if (!canReviewRequests(interaction)) {
     await interaction.reply({
-      content: "Only administrators can approve ussycode requests.",
+      content: "Only administrators or review-role members can approve ussycode requests.",
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -727,9 +752,9 @@ async function handleUssycodeDeny(
   interaction: ButtonInteraction,
   requestId: number
 ) {
-  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+  if (!canReviewRequests(interaction)) {
     await interaction.reply({
-      content: "Only administrators can deny ussycode requests.",
+      content: "Only administrators or review-role members can deny ussycode requests.",
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -785,9 +810,9 @@ async function handleUssycodeCapacityApprove(
   interaction: ButtonInteraction,
   requestId: number
 ) {
-  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+  if (!canReviewRequests(interaction)) {
     await interaction.reply({
-      content: "Only administrators can approve ussycode capacity requests.",
+      content: "Only administrators or review-role members can approve ussycode capacity requests.",
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -870,9 +895,9 @@ async function handleUssycodeCapacityDeny(
   interaction: ButtonInteraction,
   requestId: number
 ) {
-  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+  if (!canReviewRequests(interaction)) {
     await interaction.reply({
-      content: "Only administrators can deny ussycode capacity requests.",
+      content: "Only administrators or review-role members can deny ussycode capacity requests.",
       flags: MessageFlags.Ephemeral,
     });
     return;
