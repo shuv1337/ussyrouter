@@ -37,12 +37,24 @@ const USSYCODE_INTERNAL_KEY = process.env.USSYCODE_INTERNAL_KEY?.trim() || null;
  * Uses a shared secret (USSYCODE_INTERNAL_KEY) passed via Bearer token.
  * If no key is configured, the endpoints are open (for local dev).
  */
+function getBearerToken(req: Request): string | null {
+  const auth = req.headers.get("authorization");
+  if (!auth) return null;
+  return auth.replace(/^Bearer\s+/i, "").trim();
+}
+
 function verifyUssycodeAuth(req: Request): boolean {
   if (!USSYCODE_INTERNAL_KEY) return true; // no key configured = open access (dev mode)
-  const auth = req.headers.get("authorization");
-  if (!auth) return false;
-  const token = auth.replace(/^Bearer\s+/i, "").trim();
+  const token = getBearerToken(req);
+  if (!token) return false;
   return token === USSYCODE_INTERNAL_KEY;
+}
+
+function verifyUssycodeFingerprintLookupAuth(req: Request, fingerprint: string): boolean {
+  if (verifyUssycodeAuth(req)) return true;
+  const token = getBearerToken(req);
+  if (!token) return false;
+  return token === `ussycode-fp:${fingerprint}`;
 }
 
 async function main() {
@@ -105,9 +117,6 @@ async function main() {
       },
       "/ussycode/user-by-fingerprint": {
         GET: async (req) => {
-          if (!verifyUssycodeAuth(req)) {
-            return Response.json({ error: "Unauthorized" }, { status: 401 });
-          }
           const url = new URL(req.url);
           const fingerprint = url.searchParams.get("fingerprint");
           if (!fingerprint) {
@@ -115,6 +124,9 @@ async function main() {
               { error: "Missing ?fingerprint= query param" },
               { status: 400 }
             );
+          }
+          if (!verifyUssycodeFingerprintLookupAuth(req, fingerprint)) {
+            return Response.json({ error: "Unauthorized" }, { status: 401 });
           }
           try {
             const user = await getUssycodeUserByFingerprint(fingerprint);

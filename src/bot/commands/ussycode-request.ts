@@ -6,7 +6,6 @@ import {
   ButtonStyle,
   EmbedBuilder,
   MessageFlags,
-  PermissionFlagsBits,
 } from "discord.js";
 import { ensureUser, ensureGuild } from "../../db/users";
 import {
@@ -15,6 +14,7 @@ import {
   isUssycodeApproved,
   listUserUssycodeRequests,
 } from "../../db/ussycode";
+import { buildReviewNotice } from "./review-notify";
 
 const ADMIN_REVIEW_CHANNEL_ID = process.env.ADMIN_REVIEW_CHANNEL_ID?.trim() || null;
 const ROUTUSSY_CHANNEL_ID = process.env.ROUTUSSY_CHANNEL_ID?.trim() || null;
@@ -40,37 +40,6 @@ function validateSshPubkey(key: string): boolean {
   return /^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com)\s+[A-Za-z0-9+/=]+/.test(
     trimmed
   );
-}
-
-async function buildAdminReviewNotice(interaction: ChatInputCommandInteraction) {
-  if (!interaction.guildId) {
-    return { content: "New ussycode access request pending review." };
-  }
-
-  const guild = await interaction.client.guilds.fetch(interaction.guildId);
-  const roles = await guild.roles.fetch();
-  const adminRoleIds = roles
-    .filter(
-      (role) =>
-        role &&
-        role.id !== guild.id &&
-        role.permissions.has(PermissionFlagsBits.Administrator)
-    )
-    .map((role) => role.id);
-
-  if (adminRoleIds.length > 0) {
-    return {
-      content:
-        adminRoleIds.map((id) => "<@&" + id + ">").join(" ") +
-        " New ussycode access request pending review.",
-      allowedMentions: { roles: adminRoleIds },
-    };
-  }
-
-  return {
-    content: "<@" + guild.ownerId + "> New ussycode access request pending review.",
-    allowedMentions: { users: [guild.ownerId] },
-  };
 }
 
 async function resolveReviewChannel(interaction: ChatInputCommandInteraction) {
@@ -177,7 +146,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .setStyle(ButtonStyle.Danger)
   );
 
-  const adminNotice = await buildAdminReviewNotice(interaction);
+  const adminNotice = await buildReviewNotice(
+    interaction,
+    "New ussycode access request pending review."
+  );
   const reviewChannel = await resolveReviewChannel(interaction);
 
   if (!reviewChannel) {

@@ -6,7 +6,6 @@ import {
   ButtonStyle,
   EmbedBuilder,
   MessageFlags,
-  PermissionFlagsBits,
 } from "discord.js";
 import {
   ensureUser,
@@ -16,6 +15,7 @@ import {
   updateKeyRequestMessage,
   isUserApproved,
 } from "../../db/users";
+import { buildReviewNotice } from "./review-notify";
 
 const ADMIN_REVIEW_CHANNEL_ID = process.env.ADMIN_REVIEW_CHANNEL_ID?.trim() || null;
 const ROUTUSSY_CHANNEL_ID = process.env.ROUTUSSY_CHANNEL_ID?.trim() || null;
@@ -36,37 +36,6 @@ export const data = new SlashCommandBuilder()
       .setDescription("Why you need this key")
       .setRequired(false)
   );
-
-async function buildAdminReviewNotice(interaction: ChatInputCommandInteraction) {
-  if (!interaction.guildId) {
-    return { content: "New access request pending review." };
-  }
-
-  const guild = await interaction.client.guilds.fetch(interaction.guildId);
-  const roles = await guild.roles.fetch();
-  const adminRoleIds = roles
-    .filter(
-      (role) =>
-        role &&
-        role.id !== guild.id &&
-        role.permissions.has(PermissionFlagsBits.Administrator)
-    )
-    .map((role) => role.id);
-
-  if (adminRoleIds.length > 0) {
-    return {
-      content:
-        adminRoleIds.map((id) => "<@&" + id + ">").join(" ") +
-        " New access request pending review.",
-      allowedMentions: { roles: adminRoleIds },
-    };
-  }
-
-  return {
-    content: "<@" + guild.ownerId + "> New access request pending review.",
-    allowedMentions: { users: [guild.ownerId] },
-  };
-}
 
 async function resolveReviewChannel(interaction: ChatInputCommandInteraction) {
   const requestedChannelId = ADMIN_REVIEW_CHANNEL_ID ?? ROUTUSSY_CHANNEL_ID ?? interaction.channelId;
@@ -157,7 +126,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .setStyle(ButtonStyle.Danger)
   );
 
-  const adminNotice = await buildAdminReviewNotice(interaction);
+  const adminNotice = await buildReviewNotice(interaction, "New access request pending review.");
   const reviewChannel = await resolveReviewChannel(interaction);
 
   if (!reviewChannel) {
