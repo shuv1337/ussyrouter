@@ -28,13 +28,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   const limit = interaction.options.getInteger("limit") ?? 10;
   const jobs = await listRecentMediaJobs(limit);
 
   if (jobs.length === 0) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "No media jobs found.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -52,5 +53,5 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     )
     .setTimestamp();
 
-  await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+  await interaction.editReply({ embeds: [embed] });
 }

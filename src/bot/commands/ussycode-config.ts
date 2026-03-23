@@ -11,6 +11,10 @@ import {
 } from "../../db/ussycode";
 import { getUssycodeApiKey } from "../../ussycode/keys";
 
+const USSYCODE_GATEWAY_HOST = process.env.USSYCODE_GATEWAY_HOST?.trim() || "dev.ussyco.de";
+const USSYCODE_GATEWAY_PORT = process.env.USSYCODE_GATEWAY_PORT?.trim() || "2224";
+const USSYCODE_VM_BASE_DOMAIN = process.env.USSYCODE_VM_BASE_DOMAIN?.trim() || "dev.ussyco.de";
+
 export const data = new SlashCommandBuilder()
   .setName("ussycode-config")
   .setDescription("Get your ussycode connection details and API key");
@@ -24,14 +28,15 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   await ensureGuild(interaction.guildId);
   const userId = await ensureUser(interaction.user.id, interaction.guildId);
 
   const approved = await isUssycodeApproved(userId);
   if (!approved) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "You need ussycode access first. Use `/ussycode-request` to request access.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -48,39 +53,27 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     .setTitle("Ussycode Configuration")
     .setColor(0x9b59b6)
     .addFields(
-      { name: "SSH Access", value: "`ssh -p 2224 dev.ussyco.de`", inline: true },
+      { name: "SSH Access", value: `\`ssh -p ${USSYCODE_GATEWAY_PORT} ${USSYCODE_GATEWAY_HOST}\``, inline: true },
       { name: "SSH Keys Registered", value: `${sshKeyCount}`, inline: true },
       { name: "Routussy API Key", value: keyDisplay },
       {
         name: "VM Web Access",
-        value: "`https://<vmname>.dev.ussyco.de`\nEach VM gets a subdomain based on its name.",
+        value: `\`https://<vmname>.${USSYCODE_VM_BASE_DOMAIN}\`\nEach VM gets a subdomain based on its name.`,
       },
       {
         name: "How It Works",
         value:
-          "Your ussycode VMs are pre-configured with OpenCode pointing at the Routussy proxy. " +
-          "Your API key and budget are automatically injected -- just SSH in and start coding.",
+          "Your ussycode VMs launch **pi** as the default AI assistant on SSH login. " +
+          "pi is pre-configured with the ussyrouter proxy and your budget is managed automatically. " +
+          "OpenCode is also installed if you prefer it — just run `opencode` manually.",
       },
       {
-        name: "OpenCode Config (auto-injected in VMs)",
+        name: "AI Assistants (auto-configured in VMs)",
         value:
-          "```json\n" +
-          JSON.stringify(
-            {
-              provider: {
-                zai: {
-                  npm: "@ai-sdk/openai-compatible",
-                  options: {
-                    apiKey: "{env:OPENCODE_API_KEY}",
-                    baseURL: "{env:OPENCODE_BASE_URL}",
-                  },
-                },
-              },
-            },
-            null,
-            2
-          ) +
-          "\n```",
+          "**pi** (default) — launches on SSH login\n" +
+          "**OpenCode** — run `opencode` manually\n\n" +
+          "Both use fingerprint-based auth against the Routussy proxy.\n" +
+          "Budget and API access are injected automatically.",
       }
     );
 
@@ -91,8 +84,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     });
   }
 
-  await interaction.reply({
+  await interaction.editReply({
     embeds: [embed],
-    flags: MessageFlags.Ephemeral,
   });
 }

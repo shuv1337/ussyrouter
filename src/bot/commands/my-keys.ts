@@ -31,6 +31,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   await ensureGuild(interaction.guildId);
   const userId = await ensureUser(interaction.user.id, interaction.guildId);
   const keys = await listUserKeys(userId);
@@ -63,9 +65,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       });
     }
 
-    await interaction.reply({
+    await interaction.editReply({
       embeds: [embed],
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -102,9 +103,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .setDisabled(keys.length === 0)
   );
 
-  await interaction.reply({
+  await interaction.editReply({
     embeds: [embed],
     components: [row],
-    flags: MessageFlags.Ephemeral,
   });
 }

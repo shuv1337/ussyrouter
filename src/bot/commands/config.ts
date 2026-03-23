@@ -149,17 +149,15 @@ async function replyWithSnippet(
   preface: string
 ) {
   if (content.length > 1800) {
-    await interaction.reply({
+    await interaction.editReply({
       content: preface,
       files: [{ attachment: Buffer.from(content), name: filename }],
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  await interaction.reply({
+  await interaction.editReply({
     content: `${preface}\n\n${content.includes("```") ? content : `\`\`\`\n${content}\n\`\`\``}`,
-    flags: MessageFlags.Ephemeral,
   });
 }
 
@@ -188,6 +186,8 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   await ensurePricing();
   const format = interaction.options.getString("format", true);
   const model = interaction.options.getString("model")?.trim() || getDefaultModel();

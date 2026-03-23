@@ -95,6 +95,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   const budgetUsd = interaction.options.getNumber("budget", true);
   const reason = interaction.options.getString("reason") ?? "No reason provided";
   const budgetCents = Math.round(budgetUsd * 100);
@@ -159,9 +161,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const reviewChannel = await resolveReviewChannel(interaction);
 
   if (!reviewChannel) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "I could not find a text channel to send this review request to.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -173,12 +174,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     components: [row],
   });
 
-  await interaction.reply({
+  await interaction.editReply({
     content:
       reviewChannel.id === interaction.channelId
         ? "Your budget request has been submitted for admin review."
         : `Your budget request has been submitted for admin review in <#${reviewChannel.id}>.`,
-    flags: MessageFlags.Ephemeral,
   });
 
   await updateKeyRequestMessage(requestId, reviewMessage.id, reviewChannel.id);

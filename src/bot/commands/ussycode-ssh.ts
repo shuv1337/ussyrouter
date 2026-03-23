@@ -64,15 +64,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   await ensureGuild(interaction.guildId);
   const userId = await ensureUser(interaction.user.id, interaction.guildId);
 
   const approved = await isUssycodeApproved(userId);
   if (!approved) {
-    await interaction.reply({
+    await interaction.editReply({
       content:
         "You need ussycode access first. Use `/ussycode-request` to request access.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -96,20 +97,18 @@ async function handleAdd(
   const label = interaction.options.getString("label") ?? "default";
 
   if (!validateSshPubkey(key)) {
-    await interaction.reply({
+    await interaction.editReply({
       content:
         "That doesn't look like a valid SSH public key. It should start with `ssh-ed25519`, `ssh-rsa`, etc.\n\n" +
         "Find your key with: `cat ~/.ssh/id_ed25519.pub`",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
   const fingerprint = sshFingerprint(key);
   if (!fingerprint) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "Could not compute fingerprint for that key. Make sure it's a valid SSH public key.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -122,9 +121,8 @@ async function handleAdd(
     label
   );
 
-  await interaction.reply({
+  await interaction.editReply({
     content: `SSH key added (ID: ${keyId}, label: \`${label}\`, fingerprint: \`${fingerprint}\`).\n\nYou can now SSH into ussycode with this key.`,
-    flags: MessageFlags.Ephemeral,
   });
 }
 
@@ -136,16 +134,14 @@ async function handleRemove(
 
   const removed = await removeUssycodeSshKey(keyId, userId);
   if (!removed) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "Key not found or you don't own it.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  await interaction.reply({
+  await interaction.editReply({
     content: `SSH key #${keyId} has been removed.`,
-    flags: MessageFlags.Ephemeral,
   });
 }
 
@@ -156,9 +152,8 @@ async function handleList(
   const keys = await listUssycodeSshKeys(userId);
 
   if (keys.length === 0) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "You have no ussycode SSH keys. Use `/ussycode-ssh add` to add one.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -176,8 +171,7 @@ async function handleList(
         .join("\n")
     );
 
-  await interaction.reply({
+  await interaction.editReply({
     embeds: [embed],
-    flags: MessageFlags.Ephemeral,
   });
 }

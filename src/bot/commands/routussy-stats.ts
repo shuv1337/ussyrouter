@@ -44,6 +44,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   await ensureGuild(interaction.guildId);
   const db = getDb();
   const target = interaction.options.getUser("target");
@@ -57,9 +59,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .executeTakeFirst();
 
     if (!user) {
-      await interaction.reply({
+      await interaction.editReply({
         content: "That user does not have a Routussy account in this server yet.",
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -140,7 +141,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       });
     }
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
     return;
   }
 
@@ -296,5 +297,5 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     });
   }
 
-  await interaction.reply({ embeds: [embed] });
+  await interaction.editReply({ embeds: [embed] });
 }

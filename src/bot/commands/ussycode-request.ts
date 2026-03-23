@@ -113,16 +113,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   await ensureGuild(interaction.guildId);
   const userId = await ensureUser(interaction.user.id, interaction.guildId);
 
   // Check if already approved
   const alreadyApproved = await isUssycodeApproved(userId);
   if (alreadyApproved) {
-    await interaction.reply({
+    await interaction.editReply({
       content:
         "You already have ussycode access. Use `/ussycode-ssh add` to add more SSH keys, or `/ussycode-config` to get your connection details.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -131,9 +132,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const existing = await listUserUssycodeRequests(userId, 1);
   const latestRequest = existing[0];
   if (latestRequest && latestRequest.status === "pending") {
-    await interaction.reply({
+    await interaction.editReply({
       content: "You already have a pending ussycode access request. Please wait for admin review.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -181,9 +181,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const reviewChannel = await resolveReviewChannel(interaction);
 
   if (!reviewChannel) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "I could not find a text channel to send this review request to.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -195,12 +194,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     components: [row],
   });
 
-  await interaction.reply({
+  await interaction.editReply({
     content:
       reviewChannel.id === interaction.channelId
         ? "Your ussycode access request has been submitted for admin review."
         : `Your ussycode access request has been submitted for admin review in <#${reviewChannel.id}>.`,
-    flags: MessageFlags.Ephemeral,
   });
 
   await updateUssycodeRequestMessage(requestId, reviewMessage.id, reviewChannel.id);

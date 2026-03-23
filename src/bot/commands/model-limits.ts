@@ -58,15 +58,16 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   await ensurePricing();
   const subcommand = interaction.options.getSubcommand();
 
   if (subcommand === "list") {
     const limits = await listModelLimits();
     if (limits.length === 0) {
-      await interaction.reply({
+      await interaction.editReply({
         content: "No model concurrency limits configured.",
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -76,17 +77,15 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     );
     const content = `Configured concurrency limits:\n${lines.join("\n")}`;
 
-    await interaction.reply({
+    await interaction.editReply({
       content,
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
   if (!requireAdmin(interaction)) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "You need Administrator permission to modify model limits.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -99,20 +98,18 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   if (subcommand === "set") {
     const limit = interaction.options.getInteger("limit", true);
     await setModelLimit(modelId, limit, spec?.name ?? modelId);
-    await interaction.reply({
+    await interaction.editReply({
       content: `Set concurrency limit for \`${modelId}\` to ${limit}.`,
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
   if (subcommand === "remove") {
     const removed = await clearModelLimit(modelId);
-    await interaction.reply({
+    await interaction.editReply({
       content: removed
         ? `Removed concurrency limit for \`${modelId}\`.`
         : `No configured concurrency limit found for \`${modelId}\`.`,
-      flags: MessageFlags.Ephemeral,
     });
   }
 }

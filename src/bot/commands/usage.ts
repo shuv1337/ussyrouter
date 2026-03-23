@@ -50,6 +50,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   await ensureGuild(interaction.guildId);
   const subcommand = interaction.options.getSubcommand();
 
@@ -81,12 +83,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       embed.addFields({ name: "By Model", value: lines.join("\n") });
     }
 
-    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ embeds: [embed] });
   } else if (subcommand === "user") {
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-      await interaction.reply({
+      await interaction.editReply({
         content: "You need Administrator permission to view other users.",
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -95,9 +96,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const user = await getUserByDiscord(target.id, interaction.guildId);
 
     if (!user) {
-      await interaction.reply({
+      await interaction.editReply({
         content: "User has no account in this server.",
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -105,12 +105,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const usage = await quota.getUserUsage(user.id);
     const embed = buildUsageEmbed(`Usage for ${target.displayName}`, usage);
 
-    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ embeds: [embed] });
   } else if (subcommand === "server") {
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-      await interaction.reply({
+      await interaction.editReply({
         content: "You need Administrator permission to view server stats.",
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -153,6 +152,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         { name: "Active Keys", value: `${keyCount?.count ?? 0}`, inline: true },
       );
 
-    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ embeds: [embed] });
   }
 }

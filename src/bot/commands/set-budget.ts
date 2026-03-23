@@ -76,6 +76,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   await ensureGuild(interaction.guildId);
   const subcommand = interaction.options.getSubcommand();
 
@@ -87,9 +89,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const userId = await ensureUser(target.id, interaction.guildId);
     await setUserBudget(userId, cents);
 
-    await interaction.reply({
+    await interaction.editReply({
       content: `Budget for <@${target.id}> set to **$${amount.toFixed(2)}**.`,
-      flags: MessageFlags.Ephemeral,
     });
   } else if (subcommand === "default") {
     const amount = interaction.options.getNumber("amount", true);
@@ -97,9 +98,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     await setGuildDefaultBudget(interaction.guildId, cents);
 
-    await interaction.reply({
+    await interaction.editReply({
       content: `Default budget for new users set to **$${amount.toFixed(2)}**.`,
-      flags: MessageFlags.Ephemeral,
     });
   } else if (subcommand === "global") {
     const amount = interaction.options.getNumber("amount", true);
@@ -107,22 +107,20 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await setGuildGlobalBudget(interaction.guildId, cents);
     const usage = await getGuildBudgetUsage(interaction.guildId);
 
-    await interaction.reply({
+    await interaction.editReply({
       content:
         `Server API budget set to **$${amount.toFixed(2)}**. ` +
         `Spent: **$${(usage.spentCents / 100).toFixed(2)}**. ` +
         `Remaining: **$${((usage.remainingCents ?? 0) / 100).toFixed(2)}**.`,
-      flags: MessageFlags.Ephemeral,
     });
   } else if (subcommand === "global-clear") {
     await setGuildGlobalBudget(interaction.guildId, null);
     const usage = await getGuildBudgetUsage(interaction.guildId);
 
-    await interaction.reply({
+    await interaction.editReply({
       content:
         `Server API budget cap cleared. ` +
         `Spent so far: **$${(usage.spentCents / 100).toFixed(2)}**.`,
-      flags: MessageFlags.Ephemeral,
     });
   } else if (subcommand === "global-view") {
     const usage = await getGuildBudgetUsage(interaction.guildId);
@@ -135,12 +133,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         ? "Unlimited"
         : `$${(usage.remainingCents / 100).toFixed(2)}`;
 
-    await interaction.reply({
+    await interaction.editReply({
       content:
         `Server API budget: **${budgetLabel}**\n` +
         `Spent: **$${(usage.spentCents / 100).toFixed(2)}**\n` +
         `Remaining: **${remainingLabel}**`,
-      flags: MessageFlags.Ephemeral,
     });
   }
 }
