@@ -11,6 +11,7 @@ export interface Database {
   media_jobs: MediaJobsTable;
   ussycode_requests: UssycodeRequestsTable;
   ussycode_ssh_keys: UssycodeSshKeysTable;
+  compute_requests: ComputeRequestsTable;
 }
 
 export interface GuildsTable {
@@ -143,4 +144,20 @@ export interface UssycodeSshKeysTable {
   label: string; // user-provided label
   active: Generated<number>; // 1 = active, 0 = removed
   created_at: Generated<string>;
+}
+
+export interface ComputeRequestsTable {
+  id: Generated<number>;
+  user_id: string;
+  guild_id: string;
+  discord_user_id: string;
+  requested_trust_level: string;
+  approved_trust_level: string | null;
+  reason: string;
+  status: Generated<string>;
+  reviewed_by: string | null;
+  message_id: string | null;
+  channel_id: string | null;
+  created_at: Generated<string>;
+  resolved_at: string | null;
 }

@@ -32,8 +32,13 @@ import {
   resolveUssycodeRequest,
   addUssycodeSshKey,
 } from "../db/ussycode";
+import {
+  getComputeRequest,
+  resolveComputeRequest,
+} from "../db/compute-requests";
 import { getOrCreateUssycodeKey } from "../ussycode/keys";
 import { sshFingerprint } from "../ussycode/ssh";
+import { getApprovedUssycodeHandleForDiscord, setUssycodeTrustByHandle } from "../ussycode/quota";
 
 async function getKeyOwner(keyId: number): Promise<string | null> {
   const db = getDb();
@@ -66,6 +71,10 @@ export async function handleButton(interaction: ButtonInteraction) {
     await handleUssycodeApprove(interaction, parseInt(firstArg));
   } else if (action === "ussycode_deny") {
     await handleUssycodeDeny(interaction, parseInt(firstArg));
+  } else if (action === "ussycode_capacity_approve") {
+    await handleUssycodeCapacityApprove(interaction, parseInt(firstArg));
+  } else if (action === "ussycode_capacity_deny") {
+    await handleUssycodeCapacityDeny(interaction, parseInt(firstArg));
   }
 }
 
@@ -762,6 +771,155 @@ async function handleUssycodeDeny(
 
   const embed = new EmbedBuilder()
     .setTitle(originalEmbed.title ?? "Ussycode Access Request")
+    .setColor(0xed4245)
+    .setFields(fields)
+    .setTimestamp();
+
+  await interaction.update({
+    embeds: [embed],
+    components: [],
+  });
+}
+
+async function handleUssycodeCapacityApprove(
+  interaction: ButtonInteraction,
+  requestId: number
+) {
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({
+      content: "Only administrators can approve ussycode capacity requests.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const request = await getComputeRequest(requestId);
+  if (!request) {
+    await interaction.reply({
+      content: "Request not found.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (request.status !== "pending") {
+    await interaction.reply({
+      content: `This request has already been ${request.status}.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const handle = await getApprovedUssycodeHandleForDiscord(request.discord_user_id);
+  if (!handle) {
+    await interaction.reply({
+      content: "Could not determine the user's ussycode handle.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const updated = await setUssycodeTrustByHandle(handle, request.requested_trust_level);
+  await resolveComputeRequest(
+    requestId,
+    "approved",
+    interaction.user.id,
+    request.requested_trust_level
+  );
+
+  const originalEmbed = interaction.message.embeds[0];
+  if (!originalEmbed) {
+    await interaction.reply({
+      content: `Approved capacity request #${requestId} to ${request.requested_trust_level}.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  let fields = originalEmbed.fields.map((f) => ({
+    name: f.name,
+    value: f.value,
+    inline: f.inline ?? false,
+  }));
+  fields = replaceOrAppendField(
+    fields,
+    "Status",
+    `Approved by <@${interaction.user.id}>`,
+    true
+  );
+  fields = replaceOrAppendField(
+    fields,
+    "Approved Level",
+    updated.trust_level,
+    true
+  );
+
+  const embed = new EmbedBuilder()
+    .setTitle(originalEmbed.title ?? "Ussycode Capacity Request")
+    .setColor(0x57f287)
+    .setFields(fields)
+    .setTimestamp();
+
+  await interaction.update({
+    embeds: [embed],
+    components: [],
+  });
+}
+
+async function handleUssycodeCapacityDeny(
+  interaction: ButtonInteraction,
+  requestId: number
+) {
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({
+      content: "Only administrators can deny ussycode capacity requests.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const request = await getComputeRequest(requestId);
+  if (!request) {
+    await interaction.reply({
+      content: "Request not found.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (request.status !== "pending") {
+    await interaction.reply({
+      content: `This request has already been ${request.status}.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await resolveComputeRequest(requestId, "denied", interaction.user.id, null);
+
+  const originalEmbed = interaction.message.embeds[0];
+  if (!originalEmbed) {
+    await interaction.reply({
+      content: `Denied capacity request #${requestId}.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  let fields = originalEmbed.fields.map((f) => ({
+    name: f.name,
+    value: f.value,
+    inline: f.inline ?? false,
+  }));
+  fields = replaceOrAppendField(
+    fields,
+    "Status",
+    `Denied by <@${interaction.user.id}>`,
+    true
+  );
+
+  const embed = new EmbedBuilder()
+    .setTitle(originalEmbed.title ?? "Ussycode Capacity Request")
     .setColor(0xed4245)
     .setFields(fields)
     .setTimestamp();

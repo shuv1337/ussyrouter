@@ -11,47 +11,58 @@ const ZAI_CODING_PLAN_URL = "https://z.ai/landing-page/coding-plan";
 
 export const data = new SlashCommandBuilder()
   .setName("routussy-help")
-  .setDescription("Get started with Routussy");
+  .setDescription("Get a beginner-friendly guide to Routussy and Ussycode");
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   const embed = new EmbedBuilder()
-    .setTitle("Routussy Help - Sponsored by Z.AI")
+    .setTitle("Routussy Help")
     .setColor(0x5865f2)
     .setDescription(
-      "Routussy gives you a personal API key for the shared proxy after an admin approves your budget. The Ussyverse is kindly sponsored by Z.AI - thank you to Z.AI for helping power this weird and wonderful little universe, and special shout out to Rosie."
+      "Routussy is the shared AI gateway for the Ussyverse. It gives you an API key for model access. " +
+        "If you also use Ussycode, that is the VM side of the system."
     )
     .addFields(
       {
-        name: "Thanks",
-        value: "Huge thanks to Z.AI for sponsoring the Ussyverse, and a special shout out to Rosie.",
+        name: "Two systems, two kinds of limits",
+        value:
+          "**Routussy budget** = AI spend limit for model usage.\n" +
+          "**Ussycode capacity** = VM/storage/CPU/RAM limits for your hosted machines.\n\n" +
+          "Use `/usage me` for budget. Use `/ussycode-quota` for VM capacity.",
       },
       {
-        name: "1. Request Access",
-        value: "Run `/request-key budget:<usd> reason:<why>` and wait for admin review. If you are already approved, the same command can be used to request more budget.",
+        name: "If you only want AI access",
+        value:
+          "1. Run `/request-key` to ask for budget.\n" +
+          "2. After approval, run `/my-keys` to create your API key.\n" +
+          "3. Run `/config` to get example client config snippets.",
       },
       {
-        name: "2. Create Your Key",
-        value: "After approval, open `/my-keys` and use the create button. Your raw key is shown once.",
+        name: "If you want VMs too",
+        value:
+          "Run `/ussycode-help` for the full VM guide. That command explains SSH access, VM limits, trust levels, and how to request more capacity.",
       },
       {
-        name: "3. Connect Your Client",
-        value: "Run `/config` and choose OpenCode, OpenAI-compatible, JavaScript, Python, or cURL.",
+        name: "Most useful commands",
+        value:
+          "`/request-key` — ask for AI budget\n" +
+          "`/my-keys` — create and manage your Routussy API keys\n" +
+          "`/config` — example configs for OpenCode, OpenAI SDKs, and cURL\n" +
+          "`/usage me` — see your AI spend and remaining budget\n" +
+          "`/ussycode-help` — beginner guide for the VM side\n" +
+          "`/ussycode-quota` — see your VM/storage limits",
       },
       {
-        name: "4. Track Spend",
-        value: "Use `/usage me` to check your allocated budget, spend, and model usage.",
+        name: "API Endpoint",
+        value: `Base URL: \`${API_BASE}\`\nHealth: \`${PUBLIC_URL}/health\``,
       },
       {
         name: "Sponsored By Z.AI",
         value:
           `Z.AI is kindly sponsoring the Ussyverse and helping make Routussy possible. ` +
           `If you want to check out their coding plans, visit ${ZAI_CODING_PLAN_URL}`,
-      },
-      {
-        name: "API Endpoint",
-        value: `Base URL: \`${API_BASE}\`\nHealth: \`${PUBLIC_URL}/health\``,
       }
-    );
+    )
+    .setFooter({ text: "New here? Start with /request-key for AI access, or /ussycode-help for VM access." });
 
   await interaction.reply({
     embeds: [embed],

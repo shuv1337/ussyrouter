@@ -418,4 +418,22 @@ export async function migrate() {
     .on("ussycode_ssh_keys")
     .column("user_id")
     .execute();
+
+  await db.schema
+    .createTable("compute_requests")
+    .ifNotExists()
+    .addColumn("id", "integer", (col) => col.primaryKey().autoIncrement())
+    .addColumn("user_id", "text", (col) => col.notNull().references("users.id"))
+    .addColumn("guild_id", "text", (col) => col.notNull().references("guilds.id"))
+    .addColumn("discord_user_id", "text", (col) => col.notNull())
+    .addColumn("requested_trust_level", "text", (col) => col.notNull())
+    .addColumn("approved_trust_level", "text")
+    .addColumn("reason", "text", (col) => col.notNull())
+    .addColumn("status", "text", (col) => col.notNull().defaultTo("pending"))
+    .addColumn("reviewed_by", "text")
+    .addColumn("message_id", "text")
+    .addColumn("channel_id", "text")
+    .addColumn("created_at", "text", (col) => col.notNull().defaultTo(CURRENT_TIMESTAMP))
+    .addColumn("resolved_at", "text")
+    .execute();
 }

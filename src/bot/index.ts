@@ -20,6 +20,9 @@ import * as jobs from "./commands/jobs";
 import * as ussycodeRequest from "./commands/ussycode-request";
 import * as ussycodeSsh from "./commands/ussycode-ssh";
 import * as ussycodeConfig from "./commands/ussycode-config";
+import * as ussycodeHelp from "./commands/ussycode-help";
+import * as ussycodeQuota from "./commands/ussycode-quota";
+import * as ussycodeCapacityRequest from "./commands/ussycode-capacity-request";
 import {
   handleButton,
   handleModalSubmit,
@@ -70,6 +73,9 @@ const commands = [
   ussycodeRequest,
   ussycodeSsh,
   ussycodeConfig,
+  ussycodeHelp,
+  ussycodeQuota,
+  ussycodeCapacityRequest,
 ];
 
 function getGuildCommandIds(): string[] {
